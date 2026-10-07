@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { entityLabel, extractEntitiesFromEvidence, getCrossCaseMatches } from './intelligence'
 import { analyzeMessage } from './scamcheck.js'
 import { VERSION } from './version.js'
+import RestoreBackup from './RestoreBackup.jsx'
+import { BACKUP_SCHEMA, WORKSPACE_KEY, readWorkspace, restoreWorkspace, saveWorkspace } from './workspace.js'
 
-const STORAGE_KEY = 'scamalax.state.v1'
 const evidenceStates = ['OBSERVED', 'SUPPORTED', 'CORRELATED', 'INFERRED', 'DISPUTED', 'UNKNOWN']
 const evidenceKinds = ['message', 'email', 'phone', 'url', 'domain', 'wallet', 'payment', 'remote-access', 'file', 'note', 'other']
 
@@ -35,16 +36,14 @@ function normalizeCase(item) {
   }
 }
 
-function safeLoad() {
+function loadWorkspace() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
-    if (parsed && Array.isArray(parsed.cases)) {
-      return { ...parsed, cases: parsed.cases.map(normalizeCase) }
-    }
-  } catch {
-    // Corrupt local state should not break the application.
+    return { ...readWorkspace(localStorage), error: '' }
+  } catch (cause) {
+    let raw = null
+    try { raw = localStorage.getItem(WORKSPACE_KEY) } catch { /* Storage is unavailable. */ }
+    return { store: { cases: [], activeCaseId: null }, raw, error: cause.message }
   }
-  return { cases: [], activeCaseId: null }
 }
 
 async function sha256(data) {
@@ -200,7 +199,13 @@ function RelationshipGraph({ item, entities }) {
 }
 
 function AppV2() {
-  const [store, setStore] = useState(safeLoad)
+  const [initial] = useState(loadWorkspace)
+  const [store, setStore] = useState(initial.store)
+  const [persistenceError, setPersistenceError] = useState(initial.error)
+  const [restoreOpen, setRestoreOpen] = useState(false)
+  const storeRef = useRef(initial.store)
+  const savedRawRef = useRef(initial.raw)
+  const loadErrorRef = useRef(initial.error)
   const [view, setView] = useState('ledger')
   const [notice, setNotice] = useState('')
   const [rescueChecks, setRescueChecks] = useState({})
@@ -208,6 +213,7 @@ function AppV2() {
   const [scanResult, setScanResult] = useState(null)
   const [entityFilter, setEntityFilter] = useState('all')
   const fileRef = useRef(null)
+  const restoreButtonRef = useRef(null)
 
   const activeCase = useMemo(
     () => store.cases.find((item) => item.id === store.activeCaseId) || null,
@@ -235,21 +241,33 @@ function AppV2() {
   )
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(store))
-  }, [store])
-
-  useEffect(() => {
     if (!notice) return undefined
     const timer = setTimeout(() => setNotice(''), 3400)
     return () => clearTimeout(timer)
   }, [notice])
 
-  const patchCase = (caseId, updater) => {
-    setStore((current) => ({
+  const updateWorkspace = (updater) => {
+    try {
+      if (loadErrorRef.current) throw new Error(loadErrorRef.current)
+      const result = saveWorkspace(localStorage, savedRawRef.current, updater(storeRef.current))
+      storeRef.current = result.store
+      savedRawRef.current = result.raw
+      setStore(result.store)
+      setPersistenceError('')
+      return true
+    } catch (cause) {
+      setPersistenceError(cause.message || 'This change could not be saved.')
+      setNotice('')
+      return false
+    }
+  }
+
+  const patchCase = (caseId, updater) => (
+    updateWorkspace((current) => ({
       ...current,
       cases: current.cases.map((item) => (item.id === caseId ? normalizeCase(updater(normalizeCase(item))) : item)),
     }))
-  }
+  )
 
   const createCase = (event) => {
     event.preventDefault()
@@ -269,7 +287,7 @@ function AppV2() {
       analystLinks: [],
       timeline: [{ id: uid('event'), at: createdAt, text: 'Case created.' }],
     }
-    setStore((current) => ({ ...current, cases: [item, ...current.cases], activeCaseId: item.id }))
+    if (!updateWorkspace((current) => ({ ...current, cases: [item, ...current.cases], activeCaseId: item.id }))) return
     event.currentTarget.reset()
     setNotice('Case created locally.')
   }
@@ -311,11 +329,11 @@ function AppV2() {
       ...fileMeta,
     }
 
-    patchCase(activeCase.id, (item) => ({
+    if (!patchCase(activeCase.id, (item) => ({
       ...item,
       evidence: [evidence, ...item.evidence],
       timeline: [{ id: uid('event'), at: recordedAt, text: `Evidence added: ${evidence.kind} (${evidence.state}).` }, ...item.timeline],
-    }))
+    }))) return
     form.reset()
     if (fileRef.current) fileRef.current.value = ''
     setNotice('Evidence receipt added. Intelligence index refreshed locally.')
@@ -336,11 +354,11 @@ function AppV2() {
       recordedAt,
       sha256: await sha256(`message\n${scanText.trim()}`),
     }
-    patchCase(activeCase.id, (item) => ({
+    if (!patchCase(activeCase.id, (item) => ({
       ...item,
       evidence: [evidence, ...item.evidence],
       timeline: [{ id: uid('event'), at: recordedAt, text: 'ScamCheck analysis recorded as INFERRED.' }, ...item.timeline],
-    }))
+    }))) return
     setNotice('Analysis recorded as INFERRED, not proof.')
   }
 
@@ -359,18 +377,18 @@ function AppV2() {
     }
     const at = nowIso()
     const link = { id: uid('link'), from, to, relation, state, note, createdAt: at }
-    patchCase(activeCase.id, (item) => ({
+    if (!patchCase(activeCase.id, (item) => ({
       ...item,
       analystLinks: [link, ...item.analystLinks],
       timeline: [{ id: uid('event'), at, text: `Analyst link added: ${relation} (${state}).` }, ...item.timeline],
-    }))
+    }))) return
     event.currentTarget.reset()
     setNotice('Analyst relationship added with explicit evidence state.')
   }
 
   const removeAnalystLink = (linkId) => {
     if (!activeCase) return
-    patchCase(activeCase.id, (item) => ({ ...item, analystLinks: item.analystLinks.filter((link) => link.id !== linkId) }))
+    if (!patchCase(activeCase.id, (item) => ({ ...item, analystLinks: item.analystLinks.filter((link) => link.id !== linkId) }))) return
     setNotice('Analyst link removed.')
   }
 
@@ -401,8 +419,21 @@ function AppV2() {
   }
 
   const exportWorkspace = () => {
-    const packet = { schema: 'scamalax.workspace.v1', exportedAt: nowIso(), appVersion: VERSION, store }
-    download('scamalax-workspace-backup.json', JSON.stringify(packet, null, 2), 'application/json')
+    try {
+      const { store: latest } = readWorkspace(localStorage)
+      const packet = { schema: BACKUP_SCHEMA, exportedAt: nowIso(), appVersion: VERSION, store: latest }
+      download('scamalax-workspace-backup.json', JSON.stringify(packet, null, 2), 'application/json')
+    } catch (cause) { setPersistenceError(cause.message) }
+  }
+
+  const confirmRestore = (backup, selectedIds) => {
+    const result = restoreWorkspace(localStorage, backup, selectedIds)
+    storeRef.current = result.store
+    savedRawRef.current = result.raw
+    setStore(result.store)
+    setPersistenceError('')
+    loadErrorRef.current = ''
+    return result
   }
 
   const setStatus = (status) => {
@@ -417,9 +448,17 @@ function AppV2() {
 
   const removeAllLocalData = () => {
     if (!window.confirm('Delete every local SCAM-A-LAX case from this browser? This cannot be undone.')) return
-    localStorage.removeItem(STORAGE_KEY)
-    setStore({ cases: [], activeCaseId: null })
-    setNotice('Local case data deleted.')
+    try {
+      localStorage.removeItem(WORKSPACE_KEY)
+      const empty = { cases: [], activeCaseId: null }
+      storeRef.current = empty
+      savedRawRef.current = null
+      loadErrorRef.current = ''
+      setStore(empty)
+      setPersistenceError('')
+      setRestoreOpen(false)
+      setNotice('Local case data deleted.')
+    } catch { setPersistenceError('The browser could not delete the saved cases. Your data has been left untouched.') }
   }
 
   return (
@@ -460,16 +499,17 @@ function AppV2() {
               <button
                 key={item.id}
                 className={`case-row ${item.id === store.activeCaseId ? 'active' : ''}`}
-                onClick={() => setStore((current) => ({ ...current, activeCaseId: item.id }))}
+                onClick={() => updateWorkspace((current) => ({ ...current, activeCaseId: item.id }))}
               >
                 <span>{item.title}</span>
-                <small>{item.status} · {item.evidence?.length || 0} evidence</small>
+                <small>{item.status} · {item.evidence?.length || 0} evidence{item.restore ? ' · restored copy' : ''}</small>
               </button>
             ))}
           </div>
 
           <div className="sidebar-actions">
             <button onClick={exportWorkspace} disabled={!store.cases.length}>Backup workspace</button>
+            <button ref={restoreButtonRef} onClick={() => setRestoreOpen(true)} disabled={Boolean(loadErrorRef.current)}>Restore backup</button>
             <button className="danger-link" onClick={removeAllLocalData}>Delete all local data</button>
           </div>
         </aside>
@@ -486,6 +526,13 @@ function AppV2() {
               <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}>{label}</button>
             ))}
           </nav>
+
+          {persistenceError && <div className="workspace-save-error" role="alert">
+            <p>{persistenceError}</p>
+            {loadErrorRef.current && initial.raw !== null && <button onClick={() => download('scamalax-saved-data.json', initial.raw, 'application/json')}>Download saved data</button>}
+          </div>}
+
+          {restoreOpen && <RestoreBackup store={store} onRestore={confirmRestore} onCancel={() => { setRestoreOpen(false); restoreButtonRef.current?.focus() }} onBackup={exportWorkspace} />}
 
           {!activeCase && (
             <div className="hero-empty panel">

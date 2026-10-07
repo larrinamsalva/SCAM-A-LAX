@@ -3,8 +3,8 @@ import AppV2 from './AppV2.jsx'
 import { extractEntitiesFromEvidence, getCrossCaseMatches } from './intelligence.js'
 import { buildHandoffPacket, buildIntakePreview, HANDOFF_PROFILES, handoffToMarkdown } from './intake.js'
 import { VERSION } from './version.js'
+import { readWorkspace, saveWorkspace } from './workspace.js'
 
-const STORAGE_KEY = 'scamalax.state.v1'
 const MAX_FILE_BYTES = 25 * 1024 * 1024
 const MAX_FILES = 30
 const evidenceStates = ['OBSERVED', 'SUPPORTED', 'CORRELATED', 'INFERRED', 'DISPUTED', 'UNKNOWN']
@@ -20,12 +20,10 @@ function nowIso() {
 
 function safeStore() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
-    if (parsed && Array.isArray(parsed.cases)) return parsed
-  } catch {
-    // A corrupt local store should not take down intake.
+    return { ...readWorkspace(localStorage), error: '' }
+  } catch (cause) {
+    return { store: { cases: [], activeCaseId: null }, error: cause.message }
   }
-  return { cases: [], activeCaseId: null }
 }
 
 async function sha256(data) {
@@ -51,8 +49,12 @@ function safeName(value = 'case') {
 }
 
 function EvidenceIntake({ onBack }) {
-  const [store, setStore] = useState(safeStore)
-  const [caseId, setCaseId] = useState(() => safeStore().activeCaseId || safeStore().cases?.[0]?.id || '')
+  const [initial] = useState(safeStore)
+  const [store, setStore] = useState(initial.store)
+  const [caseId, setCaseId] = useState(initial.store.activeCaseId || initial.store.cases[0]?.id || '')
+  const [persistenceError, setPersistenceError] = useState(initial.error)
+  const [committing, setCommitting] = useState(false)
+  const committingRef = useRef(false)
   const [mode, setMode] = useState('auto')
   const [sourceLabel, setSourceLabel] = useState('')
   const [text, setText] = useState('')
@@ -101,9 +103,11 @@ function EvidenceIntake({ onBack }) {
 
   const refreshStore = () => {
     const current = safeStore()
-    setStore(current)
-    if (!current.cases.some((item) => item.id === caseId)) {
-      setCaseId(current.activeCaseId || current.cases?.[0]?.id || '')
+    setPersistenceError(current.error)
+    if (current.error) return
+    setStore(current.store)
+    if (!current.store.cases.some((item) => item.id === caseId)) {
+      setCaseId(current.store.activeCaseId || current.store.cases[0]?.id || '')
     }
   }
 
@@ -156,6 +160,7 @@ function EvidenceIntake({ onBack }) {
   }
 
   const commitBatch = async () => {
+    if (committingRef.current) return
     if (!activeCase) {
       setNotice('Choose a case before committing intake.')
       return
@@ -168,61 +173,74 @@ function EvidenceIntake({ onBack }) {
       return
     }
 
-    const recordedAt = nowIso()
-    const textEvidence = await Promise.all(selectedRecords.map(async (record) => ({
-      id: uid('ev'),
-      kind: record.kind,
-      state: record.state,
-      value: record.value.trim(),
-      note: record.note.trim(),
-      recordedAt,
-      sha256: await sha256(`${record.kind}\n${record.value.trim()}`),
-      intake: { mode: preview.mode, sourceLabel: sourceLabel.trim(), batch: true },
-    })))
-
-    const fileEvidence = []
-    for (const entry of selectedFiles) {
-      const bytes = await entry.file.arrayBuffer()
-      fileEvidence.push({
+    committingRef.current = true
+    setCommitting(true)
+    setNotice('')
+    try {
+      const recordedAt = nowIso()
+      const textEvidence = await Promise.all(selectedRecords.map(async (record) => ({
         id: uid('ev'),
-        kind: 'file',
-        state: entry.state,
-        value: '',
-        note: entry.note.trim(),
+        kind: record.kind,
+        state: record.state,
+        value: record.value.trim(),
+        note: record.note.trim(),
         recordedAt,
-        sha256: await sha256(bytes),
-        fileName: entry.file.name,
-        fileSize: entry.file.size,
-        fileType: entry.file.type || 'application/octet-stream',
-        intake: { mode: 'file', sourceLabel: sourceLabel.trim(), batch: true },
-      })
-    }
+        sha256: await sha256(`${record.kind}\n${record.value.trim()}`),
+        intake: { mode: preview.mode, sourceLabel: sourceLabel.trim(), batch: true },
+      })))
 
-    const added = [...textEvidence, ...fileEvidence]
-    const nextStore = {
-      ...store,
-      activeCaseId: activeCase.id,
-      cases: store.cases.map((item) => item.id === activeCase.id ? {
-        ...item,
-        evidence: [...added, ...(item.evidence || [])],
-        timeline: [
-          {
-            id: uid('event'),
-            at: recordedAt,
-            text: `Evidence Intake committed ${added.length} record${added.length === 1 ? '' : 's'} (${textEvidence.length} text, ${fileEvidence.length} file).`,
-          },
-          ...(item.timeline || []),
-        ],
-      } : item),
-    }
+      const fileEvidence = []
+      for (const entry of selectedFiles) {
+        const bytes = await entry.file.arrayBuffer()
+        fileEvidence.push({
+          id: uid('ev'),
+          kind: 'file',
+          state: entry.state,
+          value: '',
+          note: entry.note.trim(),
+          recordedAt,
+          sha256: await sha256(bytes),
+          fileName: entry.file.name,
+          fileSize: entry.file.size,
+          fileType: entry.file.type || 'application/octet-stream',
+          intake: { mode: 'file', sourceLabel: sourceLabel.trim(), batch: true },
+        })
+      }
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextStore))
-    setStore(nextStore)
-    setPreview({ mode: 'bulk', records: [], warnings: [] })
-    setText('')
-    setFiles([])
-    if (fileInput.current) fileInput.current.value = ''
-    setNotice(`${added.length} evidence record${added.length === 1 ? '' : 's'} committed. Original file bytes were not stored.`)
+      const added = [...textEvidence, ...fileEvidence]
+      const latest = readWorkspace(localStorage)
+      if (!latest.store.cases.some((item) => item.id === activeCase.id)) throw new Error('This case is no longer saved. Refresh cases before committing evidence.')
+      const nextStore = {
+        ...latest.store,
+        activeCaseId: activeCase.id,
+        cases: latest.store.cases.map((item) => item.id === activeCase.id ? {
+          ...item,
+          evidence: [...added, ...(item.evidence || [])],
+          timeline: [
+            {
+              id: uid('event'),
+              at: recordedAt,
+              text: `Evidence Intake committed ${added.length} record${added.length === 1 ? '' : 's'} (${textEvidence.length} text, ${fileEvidence.length} file).`,
+            },
+            ...(item.timeline || []),
+          ],
+        } : item),
+      }
+
+      const saved = saveWorkspace(localStorage, latest.raw, nextStore)
+      setStore(saved.store)
+      setPersistenceError('')
+      setPreview({ mode: 'bulk', records: [], warnings: [] })
+      setText('')
+      setFiles([])
+      if (fileInput.current) fileInput.current.value = ''
+      setNotice(`${added.length} evidence record${added.length === 1 ? '' : 's'} committed. Original file bytes were not stored.`)
+    } catch (cause) {
+      setPersistenceError(cause.message || 'The evidence could not be saved. Your preview is still available.')
+    } finally {
+      committingRef.current = false
+      setCommitting(false)
+    }
   }
 
   const exportHandoff = (format) => {
@@ -252,6 +270,8 @@ function EvidenceIntake({ onBack }) {
       <div className="intake-boundary">
         <strong>Local-first:</strong> pasted text and selected files are processed in this browser. File bytes are hashed for receipts and are not stored in SCAM-A-LAX.
       </div>
+
+      {persistenceError && <div className="workspace-save-error" role="alert">{persistenceError}</div>}
 
       <main className="intake-layout">
         <section className="panel intake-source">
@@ -358,8 +378,8 @@ function EvidenceIntake({ onBack }) {
             </div>
           )}
 
-          <button className="primary commit-batch" onClick={commitBatch} disabled={!activeCase || (!previewEvidence.length && !files.some((entry) => entry.selected))}>
-            Hash + commit selected evidence
+          <button className="primary commit-batch" onClick={commitBatch} disabled={committing || !activeCase || (!previewEvidence.length && !files.some((entry) => entry.selected))}>
+            {committing ? 'Saving selected evidence…' : 'Hash + commit selected evidence'}
           </button>
         </section>
 
