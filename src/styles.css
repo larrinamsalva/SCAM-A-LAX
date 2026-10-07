@@ -78,6 +78,8 @@ button.primary { background: linear-gradient(135deg, #087ca5, #0a9b73); color: w
 .module-grid > .panel, .module-single { padding: 20px; }
 .module-single { min-height: 500px; }
 .evidence-form { display: grid; gap: 12px; margin-top: 16px; }
+.record-field { display: grid; gap: 6px; }
+.record-field small { font-size: .8rem; line-height: 1.5; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .evidence-list { display: grid; gap: 10px; max-height: 680px; overflow: auto; padding-right: 3px; }
 .evidence-card { background: rgba(4, 13, 19, .7); border: 1px solid rgba(126, 200, 229, .14); border-radius: 12px; padding: 13px; }

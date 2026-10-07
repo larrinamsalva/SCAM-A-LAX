@@ -270,8 +270,9 @@ function AppV2() {
       timeline: [{ id: uid('event'), at: createdAt, text: 'Case created.' }],
     }
     setStore((current) => ({ ...current, cases: [item, ...current.cases], activeCaseId: item.id }))
+    setView('ledger')
     event.currentTarget.reset()
-    setNotice('Case created locally.')
+    setNotice('Case created. Next: add your first record with Save record.')
   }
 
   const addEvidence = async (event) => {
@@ -318,7 +319,7 @@ function AppV2() {
     }))
     form.reset()
     if (fileRef.current) fileRef.current.value = ''
-    setNotice('Evidence receipt added. Intelligence index refreshed locally.')
+    setNotice('Record added. It now appears in this case’s saved records.')
   }
 
   const runScamCheck = () => setScanResult(analyzeMessage(scanText))
@@ -463,7 +464,7 @@ function AppV2() {
                 onClick={() => setStore((current) => ({ ...current, activeCaseId: item.id }))}
               >
                 <span>{item.title}</span>
-                <small>{item.status} · {item.evidence?.length || 0} evidence</small>
+                <small>{item.status} · {item.evidence?.length || 0} {item.evidence?.length === 1 ? 'record' : 'records'}</small>
               </button>
             ))}
           </div>
@@ -522,19 +523,16 @@ function AppV2() {
               {view === 'ledger' && (
                 <div className="module-grid">
                   <section className="panel">
-                    <div className="section-heading"><div><span className="kicker">SCAM LEDGER</span><h2>Add evidence receipt</h2></div></div>
+                    <div className="section-heading"><div><span className="kicker">SCAM LEDGER</span><h2>Add a record</h2></div></div>
+                    {activeCase.evidence.length === 0 && <p className="callout"><strong>Your case is ready. Add your first record.</strong><br />Choose note for your story, enter it below, then select Save record.</p>}
                     <form className="evidence-form" onSubmit={addEvidence}>
                       <div className="two-col">
-                        <label>Kind
-                          <select name="kind" defaultValue="message">{evidenceKinds.map((kind) => <option key={kind}>{kind}</option>)}</select>
-                        </label>
+                        <div className="record-field"><label htmlFor="record-kind">Kind</label><select id="record-kind" name="kind" defaultValue="message" aria-describedby="record-kind-help">{evidenceKinds.map((kind) => <option key={kind}>{kind}</option>)}</select><small id="record-kind-help" className="muted">Choose note for your story, or message for text you received.</small></div>
                         <label>Evidence state
                           <select name="state" defaultValue="OBSERVED">{evidenceStates.map((state) => <option key={state}>{state}</option>)}</select>
                         </label>
                       </div>
-                      <label>Value / indicator
-                        <textarea name="value" rows="4" placeholder="Message text, phone, URL, wallet, transaction ID, observation…" />
-                      </label>
+                      <div className="record-field"><label htmlFor="record-value">Message or what happened</label><textarea id="record-value" name="value" rows="4" placeholder="Paste a message or describe what happened…" aria-describedby="record-value-help" /><small id="record-value-help" className="muted">This text becomes a record only when you select Save record.</small></div>
                       <label>Original file (optional)
                         <input ref={fileRef} name="file" type="file" />
                         <small>The browser hashes the file. SCAM-A-LAX does not upload or store its bytes.</small>
@@ -542,14 +540,14 @@ function AppV2() {
                       <label>Analyst note
                         <input name="note" placeholder="Why this matters, source context, caveat…" />
                       </label>
-                      <button className="primary" type="submit">Hash + add receipt</button>
+                      <button className="primary" type="submit">Save record</button>
                     </form>
                   </section>
 
                   <section className="panel">
-                    <div className="section-heading"><div><span className="kicker">MANIFEST</span><h2>{activeCase.evidence.length} evidence records</h2></div></div>
+                    <div className="section-heading"><div><span className="kicker">SAVED RECORDS</span><h2 aria-live="polite">{activeCase.evidence.length} saved {activeCase.evidence.length === 1 ? 'record' : 'records'}</h2></div></div>
                     <div className="evidence-list">
-                      {activeCase.evidence.length === 0 && <p className="muted empty">Nothing recorded yet.</p>}
+                      {activeCase.evidence.length === 0 && <p className="muted empty">No records added yet. Your case title is saved; use the record form to add your story.</p>}
                       {activeCase.evidence.map((ev) => (
                         <article className="evidence-card" key={ev.id}>
                           <div className="evidence-top">
@@ -737,7 +735,7 @@ function AppV2() {
         <span>Same internet. Fewer victims. Better receipts.</span>
       </footer>
 
-      {notice && <div className="toast">{notice}</div>}
+      {notice && <div className="toast" role="status">{notice}</div>}
     </div>
   )
 }

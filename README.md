@@ -14,6 +14,7 @@ This fork adds a people-first front door to Mikey’s local evidence workstation
 
 ### New in this edition
 
+- **Start here** provides five beginner steps for creating a case, saving its first record, checking the record list, making a backup, and preparing a report. A reminder stays available inside My cases without leaving the form. The record form uses **Save record** and explains that a case folder and its records are separate.
 - A responsive overview with plain-language navigation and direct help paths.
 - Standalone message screening that needs no case. Every matched rule includes the matched words, an explanation, and a next step. No matches leave safety **unverified**. Checks do not open pasted links, save the message, or upload it.
 - A situation-based response checklist for payments, exposed accounts, and device access, with deliberate links to official U.S. reporting resources.
