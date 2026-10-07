@@ -6,7 +6,7 @@ import './edition.css'
 
 const Workstation = lazy(() => import('./AppV3.jsx'))
 const PROGRESS_KEY = 'scamalax.learning.v1'
-const routes = [['home', 'Overview'], ['check', 'Check a message'], ['help', 'Get help'], ['academy', 'Scam Academy'], ['cases', 'My cases']]
+const routes = [['home', 'Overview'], ['guide', 'Start here'], ['check', 'Check a message'], ['help', 'Get help'], ['academy', 'Scam Academy'], ['cases', 'My cases']]
 
 function readRoute() {
   const route = window.location.hash.slice(1)
@@ -53,6 +53,7 @@ function Overview({ go, completed }) {
         <p>A suspicious text. A pushy caller. An offer that feels off. Get a clearer view of the warning signs and decide what to do next.</p>
         <div className="ed-button-row"><button className="ed-primary" onClick={() => go('check')}>Check a message <Icon name="arrow" size={18} /></button><button className="ed-secondary" onClick={() => go('help')}>I need help now</button></div>
         <div className="ed-hero-note"><Icon name="shield" size={17} /> Message checks run on this device. No account needed.</div>
+        <button className="ed-guide-link" onClick={() => go('guide')}>New here? Follow the step-by-step guide <Icon name="arrow" size={18} /></button>
       </div>
       <div className="ed-example" aria-label="Fictional message example showing three warning signs">
         <div className="ed-example-top"><span>SPOT THE PATTERN</span><span>Fictional example</span></div>
@@ -76,6 +77,25 @@ function Overview({ go, completed }) {
   </>
 }
 
+function StartHere({ go }) {
+  const steps = [
+    { id: 'case', title: 'Create a case folder', body: <><p>Open <strong>My cases</strong>, enter a short <strong>Case title</strong>, then select <strong>+ New case</strong>. For example: “Suspicious delivery text.”</p><p>A case is a folder for this incident. Creating it does not save your story yet.</p></> },
+    { id: 'story', title: 'Save what happened', body: <><p>Inside your case, open <strong>Scam Ledger</strong>. Choose <strong>Kind → note</strong> for your story, or <strong>message</strong> for a message you received.</p><p>Fill in <strong>Message or what happened</strong>, then select <strong>Save record</strong>. You can add more records to the same case later.</p></> },
+    { id: 'check', title: 'Check that your record was added', body: <><p>Your words should appear in the saved records list. After your first save, the count changes from <strong>0 saved records</strong> to <strong>1 saved record</strong>.</p><p>If it still shows zero, the case exists but your story has not been added yet.</p></> },
+    { id: 'backup', title: 'Keep a backup', body: <><p>Select <strong>Backup workspace</strong> to download a copy of your cases. Keep that file somewhere you can find it.</p><p>Cases stay in this browser on this device. Keep original screenshots and files separately; the backup contains their details and receipts, not the original file contents.</p></> },
+    { id: 'report', title: 'Prepare a report when you are ready', body: <><p>Open <strong>Case Packet</strong>. On a phone, swipe the tab row that starts with Scam Ledger to find it.</p><p>Choose <strong>Download Markdown packet</strong> for a text report, or <strong>Download JSON archive</strong> for a structured copy. Review the file before deciding who to share it with. Downloading a report does not send it anywhere.</p></> },
+  ]
+  return <div className="ed-narrow">
+    <div className="ed-page-title"><span className="ed-eyebrow">START HERE</span><h1>Your first case, step by step.</h1><p>Keep your story and supporting details together. You can follow these directions at your own pace.</p></div>
+    <section className="ed-guide-note"><h2>Need help with something that already happened?</h2><p>Start with the situation checklist in Get help, then come back to keep your records.</p><button className="ed-secondary" onClick={() => go('help')}>Open Get help <Icon name="arrow" size={18} /></button></section>
+    <ol className="ed-guide-steps" aria-label="Case directions">
+      {steps.map((step, index) => <li key={step.id} className="ed-card"><span className="ed-guide-number" aria-hidden="true">{index + 1}</span><div><h2>{step.title}</h2>{step.body}</div></li>)}
+    </ol>
+    <section className="ed-card"><h2>Ready to keep your story?</h2><button className="ed-primary" onClick={() => go('cases')}>Open My cases <Icon name="folder" size={18} /></button><p className="ed-small">The case page has a “How to save your first record” reminder you can open without leaving your form.</p></section>
+    <section className="ed-card"><h2>Want to check a message first?</h2><p>Check a message looks for warning signs in the words you enter. It does not search a shared scam-report database or save the message. Copy any text you want to keep before leaving that page, then add it to your case as a record.</p><button className="ed-secondary" onClick={() => go('check')}>Open message check <Icon name="check" size={18} /></button></section>
+  </div>
+}
+
 function MessageCheck({ go }) {
   const [text, setText] = useState('')
   const [result, setResult] = useState(null)
@@ -96,7 +116,7 @@ function MessageCheck({ go }) {
       <span className="ed-eyebrow">PATTERN CHECK · HUMAN REVIEW NEEDED</span><h2 id="check-result-title">{result.findings.length ? `${result.findings.length} warning sign${result.findings.length === 1 ? '' : 's'} to review` : 'No known patterns matched. Safety is still unverified.'}</h2>
       <p>This is a local text check, not an identity check or a verdict. It can miss scams and flag legitimate messages. Verify requests through a contact you already trust.</p>
       <div className="ed-findings">{result.findings.map((finding) => <article key={finding.id}><div className="ed-finding-heading"><Icon name="shield" size={19} /><h3>{finding.label}</h3></div><div className="ed-excerpt">Matched words: <q>{finding.excerpt}</q></div><p>{finding.why}</p><p className="ed-next-step"><strong>Next step:</strong> {finding.action}</p></article>)}</div>
-      <div className="ed-button-row"><button className="ed-primary" onClick={() => go('help')}>Build my next steps</button><button className="ed-secondary" onClick={() => go('cases')}>Keep a record in My cases</button></div><p className="ed-small">Opening My cases does not automatically save this message or its analysis.</p>
+      <div className="ed-button-row"><button className="ed-primary" onClick={() => go('help')}>Build my next steps</button><button className="ed-secondary" onClick={() => go('cases')}>Open My cases to save a record</button></div><p className="ed-small">Opening My cases does not automatically save this message or its analysis. Copy any text you want to keep before leaving this page.</p>
     </section>}
     <p className="ed-reassurance">Feeling uncertain is a good reason to slow down. You don’t have to decide while someone is pressuring you.</p>
   </div>
@@ -162,10 +182,11 @@ export default function AppEdition() {
     <main id="edition-main" ref={mainRef} tabIndex={-1} className={`edition-main ${route === 'cases' ? 'ed-workspace' : ''}`}>
       {storageError && <div className="ed-storage-error" role="status">Practice and checklist progress cannot be saved in this browser. You can keep using these tools, but that progress may be lost when you leave.</div>}
       {route === 'home' && <Overview go={go} completed={Object.keys(progress.answers).length} />}
+      {route === 'guide' && <StartHere go={go} />}
       {route === 'check' && <MessageCheck go={go} />}
       {route === 'help' && <GetHelp progress={progress} update={setProgress} go={go} />}
       {route === 'academy' && <Academy progress={progress} update={setProgress} />}
-      {route === 'cases' && <><div className="ed-workspace-intro"><span className="ed-eyebrow">YOUR EVIDENCE WORKSPACE</span><h1>Keep the details together.</h1><p>Create a case below, add the information you want to preserve, then choose an export for sharing. Existing cases stay in this browser.</p></div><Suspense fallback={<p className="ed-loading" role="status">Opening your local workspace…</p>}><Workstation /></Suspense></>}
+      {route === 'cases' && <><div className="ed-workspace-intro"><span className="ed-eyebrow">YOUR EVIDENCE WORKSPACE</span><h1>Keep the details together.</h1><p>A case is your folder. Save the story inside it as a record. Existing cases stay in this browser.</p><details className="ed-case-directions"><summary>How to save your first record</summary><ol aria-label="Quick case directions"><li>Enter a <strong>Case title</strong> and select <strong>+ New case</strong>, or open a case you already made.</li><li>Open <strong>Scam Ledger</strong>. Choose <strong>Kind → note</strong> for your story, or <strong>message</strong> for a message you received.</li><li>Fill in <strong>Message or what happened</strong> and select <strong>Save record</strong>. Check that your words appear in the saved records list.</li><li>Select <strong>Backup workspace</strong> to download a copy of your saved cases.</li></ol></details></div><Suspense fallback={<p className="ed-loading" role="status">Opening your local workspace…</p>}><Workstation /></Suspense></>}
     </main>
     <footer className="ed-footer"><div><strong>SCAM-A-LAX · Larrina’s Edition</strong><span>{VERSION} · Built on Mikey’s open-source foundation.</span></div><p>Local storage is not encrypted. On a shared device, others may be able to read saved cases. Download a backup before clearing browser data.</p><div className="ed-footer-links"><a href="https://consumer.ftc.gov/articles/how-avoid-scam" target="_blank" rel="noopener noreferrer">FTC scam-awareness guide ↗</a><a href="https://github.com/larrinamsalva/SCAM-A-LAX" target="_blank" rel="noopener noreferrer">Source code ↗</a></div></footer>
   </div>
