@@ -1,12 +1,35 @@
 # SCAM-A-LAX
 
-**Scam Intelligence & Evidence Workstation**
+**Larrina’s Edition — Scam Awareness, Support & Evidence**
 
 > Flush scams. Preserve evidence. Map the mess.
 
 SCAM-A-LAX is a free, open-source, local-first toolkit for organizing scam reports, preserving evidence metadata, triaging suspicious messages, mapping identifiers, correlating local cases, and producing clean case packets for victims, banks, platforms, investigators, and law-enforcement handoff.
 
-Current build: **v0.6.0-alpha — Evidence Intake**
+Current build: **v0.7.0-alpha — Larrina’s Edition**
+
+This fork adds a people-first front door to Mikey’s local evidence workstation. Begin with **Check a message**, **Get help**, or **Scam Academy**; use **My cases** when you want to preserve and export a record. Existing `scamalax.state.v1` case data and evidence semantics are retained.
+
+![Larrina’s Edition overview with message checks, response steps, local cases, and Scam Academy](docs/larrinas-edition-overview.png)
+
+### New in this edition
+
+- A responsive overview with plain-language navigation and direct help paths.
+- Standalone message screening that needs no case. Every matched rule includes the matched words, an explanation, and a next step. No matches leave safety **unverified**. Checks do not open pasted links, save the message, or upload it.
+- A situation-based response checklist for payments, exposed accounts, and device access, with deliberate links to official U.S. reporting resources.
+- Twenty fictional Scam Academy scenarios across four topics, including expected activity and situations that need independent verification. Each choice gets an explanation; practice progress is saved locally.
+- One shared screening engine for standalone checks and case-based ScamCheck. Case analysis continues to be recorded only as `INFERRED`.
+
+Message text in the standalone checker is held only while that page is open. Navigating away discards it; opening My cases does not automatically create evidence. Learning answers, selected help situations, and checklist ticks use the separate `scamalax.learning.v1` key. They contain no pasted messages or case records. Browser storage is not encrypted and is not a shared or cloud backup.
+
+Support and awareness content references FTC consumer guidance, reviewed October 7, 2026:
+
+- [What to do if you were scammed](https://consumer.ftc.gov/articles/what-do-if-you-were-scammed)
+- [How to avoid a scam](https://consumer.ftc.gov/articles/how-avoid-scam)
+- [Job scams](https://consumer.ftc.gov/articles/job-scams)
+- [Refund and recovery scams](https://consumer.ftc.gov/articles/refund-and-recovery-scams)
+
+The Academy examples are original fictional exercises, not real incident reports. This app cannot verify identity, guarantee detection, recover funds, or confirm that an account or device is secure.
 
 ## Core principles
 
@@ -34,7 +57,7 @@ Current build: **v0.6.0-alpha — Evidence Intake**
 - **Case Packet v2** — Markdown and JSON exports containing evidence plus clearly marked non-authoritative derived intelligence.
 - **Workspace Backup** — portable JSON backup of local cases.
 
-Future modules include **ScamWatch** and **Scam Academy**.
+**Scam Academy** is now available in this edition. **ScamWatch** remains a future module.
 
 ## Evidence Intake semantics
 
@@ -70,7 +93,7 @@ Generic providers such as Gmail, Outlook, Yahoo, iCloud, and similar common doma
 ## Development
 
 ```bash
-npm install
+npm ci
 npm test
 npm run dev
 ```
@@ -81,6 +104,15 @@ Production build:
 npm run build
 npm run preview
 ```
+
+Desktop/mobile browser QA against the production build:
+
+```bash
+npx playwright install chromium
+npm run test:browser
+```
+
+The browser suite verifies message privacy, result invalidation, checklist and lesson persistence, all 20 practice scenarios, legacy case preservation, exports, preview-before-commit intake, and inferred-only case analysis. Screenshots are written to the ignored `test-results/` folder. For an already-running preview set `QA_BASE_URL`; for a managed Chromium installation set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
 
 ## GitHub Pages
 
