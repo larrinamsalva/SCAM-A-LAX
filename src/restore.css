@@ -1,4 +1,4 @@
-.restore-panel { margin-bottom: 18px; }
+.restore-panel { margin-bottom: 18px; padding: 20px; }
 .restore-panel .section-heading { align-items: flex-start; gap: 16px; }
 .restore-panel h2:focus { outline: none; }
 .restore-panel p { line-height: 1.65; }
@@ -19,6 +19,7 @@
 .restore-cases span { min-width: 0; overflow-wrap: anywhere; }
 .restore-cases small { display: block; margin-top: 5px; color: var(--muted); line-height: 1.5; }
 @media (max-width: 600px) {
+  .restore-panel { padding: 16px; }
   .restore-panel .section-heading { flex-direction: column; }
   .restore-panel .primary { width: 100%; }
 }
