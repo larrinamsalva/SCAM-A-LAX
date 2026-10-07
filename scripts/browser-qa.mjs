@@ -151,9 +151,94 @@ try {
     await page.getByRole('button', { name: '+ New case', exact: true }).click()
     await visible(page.getByRole('heading', { name: 'Second synthetic QA case', exact: true }))
     assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('scamalax.state.v1')))).cases.length, 2)
+
+    // Use a real downloaded workspace backup; preview and cancel must not write.
+    const backupDownload = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Backup workspace', exact: true }).click()
+    const backupFile = await backupDownload
+    const backupText = await readFile(await backupFile.path(), 'utf8')
+    const backup = JSON.parse(backupText)
+    const rawBeforeRestore = await page.evaluate(() => localStorage.getItem('scamalax.state.v1'))
+    const chooseBackup = async (value) => {
+      await page.getByLabel('Choose workspace backup', { exact: true }).setInputFiles({ name: 'synthetic-backup.json', mimeType: 'application/json', buffer: Buffer.from(typeof value === 'string' ? value : JSON.stringify(value)) })
+    }
+    await page.getByRole('button', { name: 'Restore backup', exact: true }).click()
+    await chooseBackup(backupText)
+    await visible(page.getByRole('heading', { name: 'Backup preview', exact: true }))
+    assert.equal(await page.getByRole('checkbox', { name: 'Restore Synthetic QA case', exact: true }).isDisabled(), true)
+    assert.equal(await page.getByRole('button', { name: 'Restore 0 selected cases', exact: true }).isDisabled(), true)
+    assert.equal(await page.evaluate(() => localStorage.getItem('scamalax.state.v1')), rawBeforeRestore)
+    await page.getByRole('button', { name: 'Cancel restore', exact: true }).click()
+    assert.equal(await page.evaluate(() => localStorage.getItem('scamalax.state.v1')), rawBeforeRestore)
+
+    const original = backup.store.cases.find((item) => item.id === legacyCase.id)
+    const incoming = {
+      ...backup,
+      store: { activeCaseId: 'case-restored-new', cases: [
+        { ...original, notes: 'A different backup version.' },
+        { ...original, id: 'case-restored-new', title: 'New restored QA case' },
+        { ...original, id: 'case-excluded', title: 'Excluded QA case' },
+      ] },
+    }
+    await page.getByRole('button', { name: 'Restore backup', exact: true }).click()
+    await chooseBackup(incoming)
+    await visible(page.getByText('Different version — restore as a separate copy', { exact: false }))
+    await page.getByRole('checkbox', { name: 'Restore Excluded QA case', exact: true }).uncheck()
+    await settle(page)
+    await page.screenshot({ path: `test-results/${name}-restore-preview.png`, fullPage: true })
+    assert.equal(await page.evaluate(() => localStorage.getItem('scamalax.state.v1')), rawBeforeRestore)
+    // An edit from another tab between preview and confirmation must be retained.
+    await page.evaluate(() => {
+      const latest = JSON.parse(localStorage.getItem('scamalax.state.v1'))
+      latest.cases.find((item) => item.id === 'case-qa').notes = 'Updated in another tab before restore.'
+      localStorage.setItem('scamalax.state.v1', JSON.stringify(latest))
+    })
+    await page.getByRole('button', { name: 'Restore 2 selected cases', exact: true }).click()
+    await visible(page.getByText('2 cases restored. 1 restored as separate copies. 0 duplicates skipped.', { exact: true }))
+    const restored = await page.evaluate(() => JSON.parse(localStorage.getItem('scamalax.state.v1')))
+    assert.equal(restored.cases.length, 4)
+    assert.equal(restored.activeCaseId, backup.store.activeCaseId)
+    assert.equal(restored.cases.find((item) => item.id === legacyCase.id).notes, 'Updated in another tab before restore.')
+    assert.equal(restored.cases.some((item) => item.id === 'case-excluded'), false)
+    const copied = restored.cases.find((item) => item.restore?.sourceCaseId === legacyCase.id)
+    assert.equal(copied.notes, 'A different backup version.')
+    assert.deepEqual(copied.evidence, original.evidence)
+    assert.deepEqual(restored.cases.find((item) => item.id === 'case-restored-new').evidence, original.evidence)
+    await page.getByRole('button', { name: 'Close restore', exact: true }).click()
+    await page.reload()
+    await visible(page.getByRole('heading', { name: 'Second synthetic QA case', exact: true }))
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('scamalax.state.v1'))), restored)
+    const rawRestored = await page.evaluate(() => localStorage.getItem('scamalax.state.v1'))
+    await page.getByRole('button', { name: 'Restore backup', exact: true }).click()
+    await chooseBackup({ ...incoming, store: { ...incoming.store, cases: incoming.store.cases.slice(0, 2) } })
+    await visible(page.getByText('0 selected · 2 duplicates skipped', { exact: true }))
+    assert.equal(await page.getByRole('button', { name: 'Restore 0 selected cases', exact: true }).isDisabled(), true)
+    await chooseBackup('{broken JSON')
+    await visible(page.getByRole('alert').filter({ hasText: 'not readable JSON' }))
+    assert.equal(await page.getByRole('heading', { name: 'Backup preview', exact: true }).count(), 0)
+    assert.equal(await page.evaluate(() => localStorage.getItem('scamalax.state.v1')), rawRestored)
+    await chooseBackup({ schema: 'scamalax.case.v2', case: original })
+    await visible(page.getByRole('alert').filter({ hasText: 'not a case packet' }))
+    assert.equal(await page.evaluate(() => localStorage.getItem('scamalax.state.v1')), rawRestored)
+    await settle(page)
+    await page.screenshot({ path: `test-results/${name}-restore-error.png`, fullPage: true })
+
+    // Restore the app's exported backup into a separate, empty browser workspace.
+    const freshContext = await browser.newContext({ viewport })
+    const freshPage = await freshContext.newPage()
+    freshPage.on('pageerror', (error) => errors.push(error.message))
+    await freshPage.goto(`${base}#cases`)
+    await freshPage.getByRole('button', { name: 'Restore backup', exact: true }).click()
+    await freshPage.getByLabel('Choose workspace backup', { exact: true }).setInputFiles({ name: 'downloaded-backup.json', mimeType: 'application/json', buffer: Buffer.from(backupText) })
+    await freshPage.getByRole('button', { name: 'Restore 2 selected cases', exact: true }).click()
+    await visible(freshPage.getByText('2 cases restored. 0 restored as separate copies. 0 duplicates skipped.', { exact: true }))
+    assert.deepEqual(await freshPage.evaluate(() => JSON.parse(localStorage.getItem('scamalax.state.v1'))), backup.store)
+    await settle(freshPage)
+    await freshPage.screenshot({ path: `test-results/${name}-restore-success.png`, fullPage: true })
+    await freshContext.close()
     assert.deepEqual(errors, [], `${name} browser errors`)
     assert.deepEqual(outsideRequests, [], `${name} unexpectedly transmitted data outside the app origin`)
-    results.push({ viewport: name, status: 'passed', stories: ['home', 'message-check privacy and invalidation', 'help persistence', '20 academy scenarios and persistence', 'legacy case preservation', 'case export', 'preview-before-commit intake and handoff', 'inferred-only scan recording'], browserErrors: errors.length, externalRequests: outsideRequests.length })
+    results.push({ viewport: name, status: 'passed', stories: ['home', 'message-check privacy and invalidation', 'help persistence', '20 academy scenarios and persistence', 'legacy case preservation', 'case export', 'preview-before-commit intake and handoff', 'inferred-only scan recording', 'restore preview and cancel', 'selected restore with collision copies and concurrent edits', 'duplicate reimport and damaged backup protection', 'export-to-restore in a fresh workspace'], browserErrors: errors.length, externalRequests: outsideRequests.length })
     await context.close()
   }
 
@@ -170,9 +255,71 @@ try {
   await blockedPage.getByRole('button', { name: 'Scam Academy', exact: true }).click()
   await blockedPage.getByRole('button', { name: academyChoices[0].label, exact: true }).click()
   await visible(blockedPage.getByText('That’s the next step we recommend.', { exact: true }))
+  await blockedPage.getByRole('button', { name: 'My cases', exact: true }).click()
+  await visible(blockedPage.getByRole('alert').filter({ hasText: 'cannot be accessed' }))
+  assert.equal(await blockedPage.getByRole('button', { name: 'Restore backup', exact: true }).isDisabled(), true)
   assert.deepEqual(blockedErrors, [])
   results.push({ story: 'blocked learning storage degrades to in-memory progress', status: 'passed' })
   await blockedContext.close()
+
+  const damagedContext = await browser.newContext()
+  await damagedContext.addInitScript(() => localStorage.setItem('scamalax.state.v1', '{damaged saved data'))
+  const damagedPage = await damagedContext.newPage()
+  const damagedErrors = []
+  damagedPage.on('pageerror', (error) => damagedErrors.push(error.message))
+  await damagedPage.goto(`${base}#cases`)
+  await visible(damagedPage.getByRole('alert').filter({ hasText: 'left untouched' }))
+  await damagedPage.getByLabel('Case title', { exact: true }).fill('Must not overwrite damaged data')
+  await damagedPage.getByRole('button', { name: '+ New case', exact: true }).click()
+  assert.equal(await damagedPage.evaluate(() => localStorage.getItem('scamalax.state.v1')), '{damaged saved data')
+  const recoveryDownload = damagedPage.waitForEvent('download')
+  await damagedPage.getByRole('button', { name: 'Download saved data', exact: true }).click()
+  assert.equal(await readFile(await (await recoveryDownload).path(), 'utf8'), '{damaged saved data')
+  assert.deepEqual(damagedErrors, [])
+  results.push({ story: 'damaged saved workspace stays untouched and can be downloaded', status: 'passed' })
+  await damagedContext.close()
+
+  const quotaContext = await browser.newContext()
+  const quotaPage = await quotaContext.newPage()
+  const quotaErrors = []
+  quotaPage.on('pageerror', (error) => quotaErrors.push(error.message))
+  await quotaPage.goto(base)
+  const fixture = { schema: 'scamalax.workspace.v1', exportedAt: '2026-01-01T00:00:00.000Z', store: { cases: [{ id: 'quota-case', title: 'Quota QA case', status: 'OPEN', createdAt: '2026-01-01T00:00:00.000Z', evidence: [], timeline: [], analystLinks: [], notes: '' }], activeCaseId: 'quota-case' } }
+  await quotaPage.evaluate((item) => {
+    localStorage.setItem('scamalax.state.v1', JSON.stringify(item.store))
+    const save = Storage.prototype.setItem
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'scamalax.state.v1') throw new DOMException('Synthetic full storage', 'QuotaExceededError')
+      return save.call(this, key, value)
+    }
+  }, fixture)
+  await quotaPage.getByRole('button', { name: 'My cases', exact: true }).click()
+  const quotaRaw = await quotaPage.evaluate(() => localStorage.getItem('scamalax.state.v1'))
+  await quotaPage.getByRole('button', { name: 'Restore backup', exact: true }).click()
+  const quotaBackup = { ...fixture, store: { cases: [{ ...fixture.store.cases[0], id: 'incoming', title: 'Quota incoming' }], activeCaseId: 'incoming' } }
+  await quotaPage.getByLabel('Choose workspace backup', { exact: true }).setInputFiles({ name: 'quota-backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(quotaBackup)) })
+  await quotaPage.getByRole('button', { name: 'Restore 1 selected case', exact: true }).click()
+  await visible(quotaPage.getByRole('alert').filter({ hasText: 'could not save this restore' }))
+  assert.equal(await quotaPage.getByText(/1 case restored\./).count(), 0)
+  assert.equal(await quotaPage.evaluate(() => localStorage.getItem('scamalax.state.v1')), quotaRaw)
+  await quotaPage.getByRole('button', { name: 'Cancel restore', exact: true }).click()
+  await quotaPage.getByLabel('Case title', { exact: true }).fill('Unsaved case')
+  await quotaPage.getByRole('button', { name: '+ New case', exact: true }).click()
+  await visible(quotaPage.getByRole('alert').filter({ hasText: 'could not save this change' }))
+  assert.equal(await quotaPage.getByRole('heading', { name: 'Unsaved case', exact: true }).count(), 0)
+  assert.equal(await quotaPage.evaluate(() => localStorage.getItem('scamalax.state.v1')), quotaRaw)
+  await quotaPage.getByRole('button', { name: 'Open Evidence Intake', exact: true }).click()
+  await quotaPage.getByLabel('Paste source text').fill('Keep this unsaved evidence preview.')
+  await quotaPage.getByRole('button', { name: 'Build preview', exact: true }).click()
+  await quotaPage.getByRole('button', { name: 'Hash + commit selected evidence', exact: true }).click()
+  await visible(quotaPage.getByRole('alert').filter({ hasText: 'could not save this change' }))
+  await visible(quotaPage.getByRole('heading', { name: '1 proposed records', exact: true }))
+  assert.equal(await quotaPage.getByLabel('Paste source text').inputValue(), 'Keep this unsaved evidence preview.')
+  assert.equal(await quotaPage.getByText(/evidence record committed\./).count(), 0)
+  assert.equal(await quotaPage.evaluate(() => localStorage.getItem('scamalax.state.v1')), quotaRaw)
+  assert.deepEqual(quotaErrors, [])
+  results.push({ story: 'restore and ordinary saves report quota failures without replacing data', status: 'passed' })
+  await quotaContext.close()
   console.log(JSON.stringify({ results }, null, 2))
 } finally {
   await browser?.close()
