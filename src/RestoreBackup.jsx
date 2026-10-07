@@ -68,8 +68,8 @@ export default function RestoreBackup({ store, onRestore, onCancel, onBackup }) 
       <p className="muted">Backups contain private case text in plain JSON. Keep them somewhere secure. File hash receipts are preserved; keep original attachments separately.</p>
       {store.cases.length > 0 && <button onClick={onBackup}>Download current backup</button>}
       <label className="restore-file">Choose workspace backup
-        <input type="file" accept=".json,application/json" onChange={chooseFile} />
-        <small>JSON workspace backup · up to 10 MB. Case packets cannot be restored here.</small>
+        <input type="file" aria-label="Choose workspace backup" aria-describedby="restore-file-help" accept=".json,application/json" onChange={chooseFile} />
+        <small id="restore-file-help">JSON workspace backup · up to 10 MB. Case packets cannot be restored here.</small>
       </label>
       {reading && <p role="status">Reading backup…</p>}
       {error && <p className="restore-error" role="alert">{error}</p>}

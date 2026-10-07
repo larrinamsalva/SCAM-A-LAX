@@ -213,6 +213,7 @@ function AppV2() {
   const [scanResult, setScanResult] = useState(null)
   const [entityFilter, setEntityFilter] = useState('all')
   const fileRef = useRef(null)
+  const restoreButtonRef = useRef(null)
 
   const activeCase = useMemo(
     () => store.cases.find((item) => item.id === store.activeCaseId) || null,
@@ -508,7 +509,7 @@ function AppV2() {
 
           <div className="sidebar-actions">
             <button onClick={exportWorkspace} disabled={!store.cases.length}>Backup workspace</button>
-            <button onClick={() => setRestoreOpen(true)} disabled={Boolean(loadErrorRef.current)}>Restore backup</button>
+            <button ref={restoreButtonRef} onClick={() => setRestoreOpen(true)} disabled={Boolean(loadErrorRef.current)}>Restore backup</button>
             <button className="danger-link" onClick={removeAllLocalData}>Delete all local data</button>
           </div>
         </aside>
@@ -531,7 +532,7 @@ function AppV2() {
             {loadErrorRef.current && initial.raw !== null && <button onClick={() => download('scamalax-saved-data.json', initial.raw, 'application/json')}>Download saved data</button>}
           </div>}
 
-          {restoreOpen && <RestoreBackup store={store} onRestore={confirmRestore} onCancel={() => setRestoreOpen(false)} onBackup={exportWorkspace} />}
+          {restoreOpen && <RestoreBackup store={store} onRestore={confirmRestore} onCancel={() => { setRestoreOpen(false); restoreButtonRef.current?.focus() }} onBackup={exportWorkspace} />}
 
           {!activeCase && (
             <div className="hero-empty panel">
