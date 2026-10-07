@@ -1,0 +1,30 @@
+// Explainable text screening only. This module never fetches pasted URLs.
+const rules = [
+  { id: 'gift-card', label: 'Gift-card payment language', weight: 28, pattern: /\bgift\s*cards?\b|\b(?:apple|google play|steam|target) cards?\b/i, why: 'Gift-card codes can let another person spend the balance. A request to pay a bill, fee, or stranger this way deserves a pause.', action: 'Do not send card numbers or PINs. Verify the request through a contact you already trust.' },
+  { id: 'remote-access', label: 'Remote-access software mentioned', weight: 30, pattern: /\b(?:anydesk|teamviewer|ultraviewer|supremo|screenconnect|remote desktop|remote access)\b/i, why: 'Remote-access tools can give someone control of a device. A tool name alone does not establish that the contact is legitimate.', action: 'Do not grant access to an unexpected caller. Contact your usual support provider independently.' },
+  { id: 'pressure', label: 'Pressure to act quickly', weight: 14, pattern: /\b(?:act now|immediately|right now|urgent|today only|final warning|do not delay|within \d+ (?:minutes|hours))\b/i, why: 'A short deadline can keep you from checking a story or asking someone for help.', action: 'Pause the conversation and verify the request before acting.' },
+  { id: 'secrecy', label: 'Secrecy or isolation request', weight: 24, pattern: /\b(?:don['’]?t tell|do not tell|keep this secret|don['’]?t contact your bank|stay on the line)\b/i, why: 'Instructions to hide a request or stay on a call can separate you from people who could help.', action: 'End the conversation and talk to a trusted person or institution through your own contact details.' },
+  { id: 'code', label: 'Security-code language', weight: 24, pattern: /\b(?:otp|one[- ]time code|verification code|security code|texted you a code)\b/i, why: 'A message may legitimately mention a code, but asking you to send a sign-in code to another person can expose your account.', action: 'Keep sign-in codes private. Use only the app or website you deliberately opened.' },
+  { id: 'crypto', label: 'Cryptocurrency mentioned', weight: 18, pattern: /\b(?:bitcoin|btc|ethereum|eth|crypto(?:currency)?|wallet address|usdt|tether)\b/i, why: 'Cryptocurrency transfers can be difficult to reverse. Mentioning cryptocurrency by itself is not proof of a scam.', action: 'Independently check the recipient and reason for payment; avoid pressure to transfer.' },
+  { id: 'impersonation', label: 'Bank or government authority claimed', weight: 18, pattern: /\b(?:fraud department|federal agent|social security|irs|tax department|bank security|police department)\b/i, why: 'An organization name in a message does not verify who sent it.', action: 'Look up the institution yourself. Use the number on your card or an official website you navigate to independently.' },
+  { id: 'overpayment', label: 'Refund or overpayment story', weight: 16, pattern: /\b(?:refund|overpayment|accidental payment|too much money|return the difference)\b/i, why: 'Some scams use a supposed overpayment to make you return your own money before a payment is reversed.', action: 'Ask your bank or the payment service to review the original transaction. Do not send a separate repayment to a stranger.' },
+  { id: 'transfer', label: 'Money-transfer method mentioned', weight: 18, pattern: /\b(?:wire transfer|zelle|cash app|western union|moneygram|bank transfer)\b/i, why: 'These services have legitimate uses. An unexpected request to transfer money still needs independent verification.', action: 'Confirm the recipient using a known contact before sending anything.' },
+  { id: 'cash', label: 'Cash collection or crypto ATM instructions', weight: 24, pattern: /\b(?:cash courier|courier will collect|bitcoin atm|crypto atm|withdraw cash)\b/i, why: 'Instructions to withdraw cash for a courier or use a crypto ATM can move money out of reach quickly.', action: 'Pause and contact the institution being named through a trusted channel.' },
+  { id: 'threat', label: 'Threat to an account or of legal action', weight: 14, pattern: /\b(?:account[^\n.!?]{0,50}(?:suspend|close)|warrant|arrest|legal action|unauthorized charge)\b/i, why: 'Threats can push you into paying or sharing information without checking the claim.', action: 'Verify through your usual account app or independently located official contact.' },
+  { id: 'job-fee', label: 'Pay-to-work or task-deposit request', weight: 28, pattern: /\b(?:pay (?:to|for) (?:get|the job|training)|training fee|equipment fee|deposit to (?:unlock|withdraw)|pay to get paid|product boosting|app optimization)\b/i, why: 'A supposed job that requires a payment to unlock earnings is a common scam pattern.', action: 'Do not pay to unlock wages. Verify a job on the employer’s independently located website.' },
+  { id: 'recovery', label: 'Money-recovery promise', weight: 24, pattern: /\b(?:recover (?:your |the )?(?:money|funds|crypto)|recovery (?:agent|expert|fee)|guaranteed recovery)\b/i, why: 'People who have lost money may be targeted again by someone offering recovery for an upfront fee.', action: 'Contact the original payment provider directly. Do not pay an unexpected recovery contact.' },
+  { id: 'prize', label: 'Prize fee or guaranteed-return claim', weight: 20, pattern: /\b(?:processing fee|claim your prize|guaranteed (?:profit|returns?)|double your money)\b/i, why: 'A fee to claim a surprise prize or a guaranteed investment return deserves careful checking.', action: 'Do not pay an unexpected prize fee or act on a promised guaranteed return.' },
+]
+
+export function analyzeMessage(value) {
+  const text = typeof value === 'string' ? value : ''
+  const findings = rules.flatMap(({ pattern, ...rule }) => {
+    const match = text.match(pattern)
+    return match ? [{ ...rule, excerpt: match[0] }] : []
+  })
+  const score = Math.min(100, findings.reduce((sum, finding) => sum + finding.weight, 0))
+  const level = score >= 70 ? 'CRITICAL' : score >= 45 ? 'HIGH' : score >= 20 ? 'ELEVATED' : 'LOW'
+  return { score, level, findings, status: findings.length ? 'REVIEW' : 'UNDETERMINED' }
+}
+
+export const MESSAGE_LIMIT = 20000

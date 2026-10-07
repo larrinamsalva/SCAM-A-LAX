@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { entityLabel, extractEntitiesFromEvidence, getCrossCaseMatches } from './intelligence'
+import { analyzeMessage } from './scamcheck.js'
+import { VERSION } from './version.js'
 
 const STORAGE_KEY = 'scamalax.state.v1'
-const VERSION = 'v0.5.0-alpha'
 const evidenceStates = ['OBSERVED', 'SUPPORTED', 'CORRELATED', 'INFERRED', 'DISPUTED', 'UNKNOWN']
 const evidenceKinds = ['message', 'email', 'phone', 'url', 'domain', 'wallet', 'payment', 'remote-access', 'file', 'note', 'other']
 
@@ -14,20 +15,6 @@ const rescueSteps = [
   'From a trusted device, change exposed passwords and enable multi-factor authentication.',
   'Preserve messages, receipts, transaction IDs, phone numbers, URLs, and screenshots.',
   'Report the incident to the relevant platform and appropriate authorities for your location.',
-]
-
-const scamRules = [
-  { label: 'Gift-card payment request', weight: 28, re: /gift\s*card|apple card|google play|steam card|target card/i },
-  { label: 'Remote-access software', weight: 30, re: /anydesk|teamviewer|ultraviewer|supremo|screenconnect|remote desktop/i },
-  { label: 'Urgency or pressure', weight: 14, re: /act now|immediately|right now|urgent|today only|final warning|do not delay/i },
-  { label: 'Secrecy instruction', weight: 24, re: /don['’]?t tell|do not tell|keep this secret|don['’]?t contact your bank|stay on the line/i },
-  { label: 'One-time code request', weight: 24, re: /otp|one[- ]time code|verification code|security code|texted you a code/i },
-  { label: 'Cryptocurrency payment', weight: 18, re: /bitcoin|btc|ethereum|eth|crypto|wallet address|usdt|tether/i },
-  { label: 'Bank or government impersonation language', weight: 18, re: /fraud department|federal agent|social security|irs|tax department|bank security|police department/i },
-  { label: 'Refund or overpayment setup', weight: 16, re: /refund|overpayment|accidental payment|too much money|return the difference/i },
-  { label: 'Irreversible transfer method', weight: 18, re: /wire transfer|zelle|cash app|western union|moneygram|bank transfer/i },
-  { label: 'Cash courier / ATM direction', weight: 24, re: /cash courier|courier will collect|bitcoin atm|crypto atm|withdraw cash/i },
-  { label: 'Account-threat language', weight: 14, re: /account.*suspend|account.*close|warrant|arrest|legal action|unauthorized charge/i },
 ]
 
 function uid(prefix = 'id') {
@@ -64,14 +51,6 @@ async function sha256(data) {
   const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data
   const digest = await crypto.subtle.digest('SHA-256', bytes)
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-function analyzeText(text) {
-  const findings = scamRules.filter((rule) => rule.re.test(text))
-  const raw = findings.reduce((sum, rule) => sum + rule.weight, 0)
-  const score = Math.min(100, raw)
-  const level = score >= 70 ? 'CRITICAL' : score >= 45 ? 'HIGH' : score >= 20 ? 'ELEVATED' : 'LOW'
-  return { score, level, findings }
 }
 
 function download(filename, content, type) {
@@ -342,7 +321,7 @@ function AppV2() {
     setNotice('Evidence receipt added. Intelligence index refreshed locally.')
   }
 
-  const runScamCheck = () => setScanResult(analyzeText(scanText))
+  const runScamCheck = () => setScanResult(analyzeMessage(scanText))
 
   const recordScan = async () => {
     if (!activeCase || !scanResult || !scanText.trim()) return
@@ -448,7 +427,7 @@ function AppV2() {
       <header className="topbar">
         <div>
           <div className="eyebrow">SCAM INTELLIGENCE &amp; EVIDENCE WORKSTATION</div>
-          <h1>SCAM-A-LAX</h1>
+          <h2 className="workstation-title">SCAM-A-LAX</h2>
           <p className="tagline">Flush scams. Preserve evidence. Map the mess.</p>
         </div>
         <div className="version-card">
@@ -512,8 +491,8 @@ function AppV2() {
             <div className="hero-empty panel">
               <div className="toilet-mark">🚽</div>
               <span className="kicker">READY</span>
-              <h2>Sir, Scam-A-Lax Intelligence Graph is installed.</h2>
-              <p>Create a case to proceed with Scam Ledger alpha v0.5.</p>
+              <h2>Your story deserves a clear record.</h2>
+              <p>Create a local case using the form to organize messages, notes, and file receipts.</p>
               <div className="terminal">
                 <div>&gt; evidence boundary: ACTIVE</div>
                 <div>&gt; derived intelligence authority: NONE</div>
@@ -687,7 +666,7 @@ function AppV2() {
                   <span className="kicker">SCAMCHECK</span>
                   <h2>Explainable local message triage</h2>
                   <p className="muted">Paste suspicious text. Rules run entirely in this browser and produce indicators, not a verdict.</p>
-                  <textarea className="scanner" rows="10" value={scanText} onChange={(e) => setScanText(e.target.value)} placeholder="Paste a suspicious message, email body, payment instruction, or call notes…" />
+                  <textarea className="scanner" rows="10" aria-label="Case message to check" value={scanText} onChange={(e) => { setScanText(e.target.value); setScanResult(null) }} placeholder="Paste a suspicious message, email body, payment instruction, or call notes…" />
                   <div className="button-row">
                     <button className="primary" onClick={runScamCheck} disabled={!scanText.trim()}>Analyze locally</button>
                     {scanResult && <button onClick={recordScan}>Record as INFERRED</button>}
@@ -699,7 +678,7 @@ function AppV2() {
                         <span className="kicker">{scanResult.level} INDICATOR LOAD</span>
                         <h3>{scanResult.findings.length ? `${scanResult.findings.length} configured indicators matched` : 'No configured indicators matched'}</h3>
                         <div className="chips">{scanResult.findings.map((finding) => <span key={finding.label}>{finding.label}</span>)}</div>
-                        <p>This score is a triage aid. Legitimate messages can match rules, and scams can avoid them.</p>
+                        <p>This is a pattern-weight total, not a scam probability. Legitimate messages can match rules, and scams can avoid them. No matches leave safety unverified.</p>
                       </div>
                     </div>
                   )}

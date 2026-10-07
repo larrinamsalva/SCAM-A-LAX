@@ -1,6 +1,3 @@
-.app-v3-shell .version-card span { font-size: 0; }
-.app-v3-shell .version-card span::after { content: 'v0.6.0-alpha'; font-size: 1rem; }
-
 .v3-launchbar {
   position: sticky;
   top: 0;

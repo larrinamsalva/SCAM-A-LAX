@@ -2,9 +2,9 @@ import { useMemo, useRef, useState } from 'react'
 import AppV2 from './AppV2.jsx'
 import { extractEntitiesFromEvidence, getCrossCaseMatches } from './intelligence.js'
 import { buildHandoffPacket, buildIntakePreview, HANDOFF_PROFILES, handoffToMarkdown } from './intake.js'
+import { VERSION } from './version.js'
 
 const STORAGE_KEY = 'scamalax.state.v1'
-const VERSION = 'v0.6.0-alpha'
 const MAX_FILE_BYTES = 25 * 1024 * 1024
 const MAX_FILES = 30
 const evidenceStates = ['OBSERVED', 'SUPPORTED', 'CORRELATED', 'INFERRED', 'DISPUTED', 'UNKNOWN']
@@ -240,7 +240,7 @@ function EvidenceIntake({ onBack }) {
       <header className="intake-topbar">
         <div>
           <span className="kicker">SCAM-A-LAX {VERSION}</span>
-          <h1>Evidence Intake</h1>
+          <h2 className="intake-title">Evidence Intake</h2>
           <p>Preview first. Hash second. Commit only what you mean to preserve.</p>
         </div>
         <div className="intake-actions">
@@ -291,7 +291,7 @@ function EvidenceIntake({ onBack }) {
           <div className="file-stage">
             <div>
               <strong>Files / screenshots</strong>
-              <p>Up to {MAX_FILES} files, 25 MB each. Images are hashed as evidence; v0.6 does not claim OCR.</p>
+              <p>Up to {MAX_FILES} files, 25 MB each. Images are hashed as evidence; image text is not read or interpreted.</p>
             </div>
             <input ref={fileInput} type="file" multiple onChange={handleFiles} />
           </div>
@@ -417,7 +417,7 @@ export default function AppV3() {
   return (
     <div className="app-v3-shell">
       <div className="v3-launchbar">
-        <div><strong>SCAM-A-LAX {VERSION}</strong><span>Evidence Intake is ready.</span></div>
+        <div><strong>SCAM-A-LAX {VERSION}</strong><span>Import evidence and prepare a handoff.</span></div>
         <button className="primary" onClick={openIntake}>Open Evidence Intake</button>
       </div>
       <AppV2 key={workstationKey} />
