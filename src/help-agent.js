@@ -31,6 +31,7 @@ const topics = {
       'For a new incident, open My cases and select Save a new case. Describe What happened?',
       'Select Continue to evidence. Add a screenshot or contact details if needed, then select Review case.',
       'Check the preview and select Save case. Look for the saved confirmation and your words in Scam Ledger.',
+      'For a dated call or message, use Call & message log, review the details, then Save contact record.',
       'For an existing case, open Scam Ledger, enter Message or what happened, and select Save record. Check the saved words and that the count increases.',
     ],
     actions: [casesAction],

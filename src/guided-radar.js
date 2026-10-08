@@ -88,15 +88,63 @@ export const GUIDED_QUESTIONS = [
   },
   {
     id: 'stay-on-line', topic: 'Pressure', points: 16,
-    question: 'Did they rush you or demand that you stay on the phone?',
-    hint: 'Including while driving to a store, bank, or gift card counter.',
-    reason: 'Pressure to stay on the line can stop you from independently checking a story.',
+    question: 'Did they rush you or insist you stay on the phone until you paid?',
+    hint: 'For example, all the way to the store, at the register, or while speaking with your bank.',
+    reason: 'Keeping you on the line can stop you from checking the story or speaking privately with someone who can help.',
   },
   {
     id: 'pay-for-job', topic: 'Jobs and benefits', points: 27,
     question: 'Did someone promise a job, grant, or prize but require payment first?',
     hint: 'For example, an equipment fee or payment to unlock supposed earnings.',
     reason: 'Be wary of offers that require you to send money to receive wages, grants, or prizes.',
+  },
+  {
+    id: 'quick-callback', topic: 'Phone pressure', points: 6,
+    question: 'Did they call back quickly and pressure you to continue after you hung up?',
+    hint: 'They may keep calling, switch numbers, or insist you finish a payment right away.',
+    reason: 'A quick callback alone can be ordinary. Repeated calls and pressure after you try to stop are reasons to pause and verify independently.',
+  },
+  {
+    id: 'bank-cover', topic: 'Bank or store instructions', points: 24,
+    question: 'Did they tell you what to say to hide the real reason from your bank?',
+    hint: 'For example, say the cash is for home repairs, a family purchase, or a gift.',
+    reason: 'A cover story can prevent bank staff from helping you spot a harmful payment request. Tell them what the caller actually said.',
+  },
+  {
+    id: 'block-verification', topic: 'Checking the story', points: 24,
+    question: 'Did they refuse to let you call the organization using a number you already trust?',
+    hint: 'They may say only their number works, or that checking will ruin the refund or investigation.',
+    reason: 'Use an official contact you find independently. A displayed number or a number supplied by the caller does not verify their identity.',
+  },
+  {
+    id: 'cash-courier', topic: 'Cash and valuables', points: 34,
+    question: 'Did they tell you to hand cash or gold to someone to protect your money?',
+    hint: 'They might send a courier or tell you to leave a package at a pickup point.',
+    reason: 'A caller directing you to give cash or gold to someone for safekeeping is a serious warning sign. Pause before handing anything over.',
+  },
+  {
+    id: 'message-signin', topic: 'Messages and links', points: 22,
+    question: 'Did an unexpected message send you to a link to sign in or enter payment details?',
+    hint: 'It might claim a package, refund, toll, account warning, or failed delivery needs your attention.',
+    reason: 'Do not use the message link to verify the claim. Open the official app or use contact details you already trust.',
+  },
+  {
+    id: 'military-friend', topic: 'Online relationships', points: 21,
+    question: 'Did an online friend claiming to be in the military ask you for money?',
+    hint: 'For example, for leave, travel, medical care, a package, or help during a deployment.',
+    reason: 'An online relationship and a military story do not verify a person. Pause a money request and check the claim with trusted help.',
+  },
+  {
+    id: 'recovery-fee', topic: 'Getting lost money back', points: 27,
+    question: 'Did someone promise to recover money you lost, but ask you to pay first?',
+    hint: 'They may claim to be a recovery agent, investigator, lawyer, or government office.',
+    reason: 'A supposed recovery offer can target someone who has already lost money. Verify the organization independently before paying or sharing information.',
+  },
+  {
+    id: 'check-return', topic: 'Checks and overpayments', points: 28,
+    question: 'Did someone send a check and tell you to send part of the money elsewhere?',
+    hint: 'For example, to return an overpayment or pay an equipment supplier.',
+    reason: 'Money appearing in your account does not prove a check is genuine. Check with your bank before sending any of your own money.',
   },
 ]
 
