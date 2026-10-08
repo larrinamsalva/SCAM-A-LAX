@@ -4,6 +4,7 @@ import { analyzeMessage, MESSAGE_LIMIT } from './scamcheck.js'
 import { VERSION } from './version.js'
 import HelpAgent from './HelpAgent.jsx'
 import ScamRadar from './ScamRadar.jsx'
+import { hasCaseDraft } from './case-workflow.js'
 import './edition.css'
 
 const Workstation = lazy(() => import('./AppV3.jsx'))
@@ -82,9 +83,9 @@ function Overview({ go, completed }) {
 
 function StartHere({ go }) {
   const steps = [
-    { id: 'case', title: 'Create a case folder', body: <><p>Open <strong>My cases</strong>, enter a short <strong>Case title</strong>, then select <strong>+ New case</strong>. For example: “Suspicious delivery text.”</p><p>A case is a folder for this incident. Creating it does not save your story yet.</p></> },
-    { id: 'story', title: 'Save what happened', body: <><p>Inside your case, open <strong>Scam Ledger</strong>. Choose <strong>Kind → note</strong> for your story, or <strong>message</strong> for a message you received.</p><p>Fill in <strong>Message or what happened</strong>, then select <strong>Save record</strong>. You can add more records to the same case later.</p></> },
-    { id: 'check', title: 'Check that your record was added', body: <><p>Your words should appear in the saved records list. After your first save, the count changes from <strong>0 saved records</strong> to <strong>1 saved record</strong>.</p><p>If it still shows zero, the case exists but your story has not been added yet.</p></> },
+    { id: 'case', title: 'Describe what happened', body: <><p>Open <strong>My cases</strong> and select <strong>Save a new case</strong>. Enter your story in <strong>What happened?</strong> and choose a category, or Not sure.</p><p>A name, date, and approximate loss are optional. You can leave the name blank.</p></> },
+    { id: 'story', title: 'Add details and save your case', body: <><p>Select <strong>Continue to evidence</strong>. Add contact details or a screenshot if you have them, then select <strong>Review case</strong>.</p><p>Check the preview and select <strong>Save case</strong>. This saves the case and its story together. Nothing is sent to anyone.</p></> },
+    { id: 'check', title: 'Find your saved story', body: <><p>Look for <strong>Case and story saved in this browser</strong> and your words in <strong>Scam Ledger</strong>. Use <strong>Find a saved case</strong> to search your story, case name, ID, or file name.</p><p>To add to an existing case, use <strong>Message or what happened → Save record</strong>. An empty case folder still needs its first record.</p></> },
     { id: 'backup', title: 'Keep a backup', body: <><p>Select <strong>Backup workspace</strong> to download your cases, including screenshots saved with a viewable copy. Keep that file somewhere you can find it.</p><p>Cases stay in this browser on this device. Keep original files separately too. Files saved as receipts only are not included as images.</p></> },
     { id: 'report', title: 'Prepare a report when you are ready', body: <><p>Open <strong>Case Packet</strong>. On a phone, swipe the tab row that starts with Scam Ledger to find it.</p><p>Choose <strong>Download Markdown packet</strong> for a text report, or <strong>Download JSON archive</strong> for a structured copy. Review the file before deciding who to share it with. Downloading a report does not send it anywhere.</p></> },
   ]
@@ -163,9 +164,25 @@ export default function AppEdition() {
   const [route, setRoute] = useState(readRoute)
   const [progress, setProgress] = useState(loadProgress)
   const [storageError, setStorageError] = useState(false)
+  const [caseDraft, setCaseDraft] = useState(null)
+  const [caseSaving, setCaseSaving] = useState(false)
+  const caseLeaveCheck = useRef(null)
+  const caseSavingRef = useRef(false)
+  caseSavingRef.current = caseSaving
+  const routeRef = useRef(route)
+  routeRef.current = route
   const mainRef = useRef(null)
   useEffect(() => {
-    const onHashChange = () => { setRoute(readRoute()); mainRef.current?.focus() }
+    const onHashChange = () => {
+      const next = readRoute()
+      if (routeRef.current === 'cases' && next !== 'cases' && (caseSavingRef.current || (caseLeaveCheck.current && !caseLeaveCheck.current()))) {
+        window.history.replaceState(null, '', '#cases')
+        return
+      }
+      routeRef.current = next
+      setRoute(next)
+      mainRef.current?.focus()
+    }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
@@ -173,7 +190,16 @@ export default function AppEdition() {
     try { localStorage.setItem(PROGRESS_KEY, JSON.stringify({ schema: 1, ...progress })); setStorageError(false) }
     catch { setStorageError(true) }
   }, [progress])
+  useEffect(() => {
+    if (!hasCaseDraft(caseDraft)) return
+    const warnBeforeLeaving = (event) => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', warnBeforeLeaving)
+    return () => window.removeEventListener('beforeunload', warnBeforeLeaving)
+  }, [caseDraft])
   const go = (next) => {
+    if (caseSaving) return
+    if (route === 'cases' && next !== 'cases' && caseLeaveCheck.current && !caseLeaveCheck.current()) return
+    routeRef.current = next
     window.location.hash = next
     setRoute(next)
     window.scrollTo({ top: 0, behavior: 'instant' })
@@ -182,7 +208,7 @@ export default function AppEdition() {
   return <div className="edition-shell">
     <a className="ed-skip" href="#edition-main" onClick={(event) => { event.preventDefault(); mainRef.current?.focus() }}>Skip to content</a>
     <header className="ed-header"><button className="ed-brand" onClick={() => go('home')} aria-label="SCAM-A-LAX overview"><span className="ed-brand-mark"><Icon name="shield" size={26} /></span><span><strong>SCAM-A-LAX<span className="ed-brand-period">.</span></strong><small>Protect people. Preserve the story.</small></span></button><span className="ed-header-note">Free. Local. People first.</span></header>
-    <nav className="ed-nav" aria-label="Main navigation">{routes.map(([id, title]) => <button key={id} className={route === id ? 'is-active' : ''} aria-current={route === id ? 'page' : undefined} onClick={() => go(id)}>{title}</button>)}</nav>
+    <nav className="ed-nav" aria-label="Main navigation">{routes.map(([id, title]) => <button key={id} disabled={caseSaving} className={route === id ? 'is-active' : ''} aria-current={route === id ? 'page' : undefined} onClick={() => go(id)}>{title}</button>)}</nav>
     <main id="edition-main" ref={mainRef} tabIndex={-1} className={`edition-main ${route === 'cases' ? 'ed-workspace' : ''}`}>
       {storageError && <div className="ed-storage-error" role="status">Practice and checklist progress cannot be saved in this browser. You can keep using these tools, but that progress may be lost when you leave.</div>}
       {route === 'home' && <Overview go={go} completed={Object.keys(progress.answers).length} />}
@@ -191,9 +217,9 @@ export default function AppEdition() {
       {route === 'numbers' && <Suspense fallback={<p className="ed-loading" role="status">Opening your local number tracker…</p>}><NumberTracker go={go} /></Suspense>}
       {route === 'help' && <GetHelp progress={progress} update={setProgress} go={go} />}
       {route === 'academy' && <Academy progress={progress} update={setProgress} />}
-      {route === 'cases' && <><div className="ed-workspace-intro"><span className="ed-eyebrow">YOUR EVIDENCE WORKSPACE</span><h1>Keep the details together.</h1><p>A case is your folder. Save the story inside it as a record. Existing cases stay in this browser.</p><details className="ed-case-directions"><summary>How to save your first record</summary><ol aria-label="Quick case directions"><li>Enter a <strong>Case title</strong> and select <strong>+ New case</strong>, or open a case you already made.</li><li>Open <strong>Scam Ledger</strong>. Choose <strong>Kind → note</strong> for your story, or <strong>message</strong> for a message you received.</li><li>Fill in <strong>Message or what happened</strong> and select <strong>Save record</strong>. Check that your words appear in the saved records list.</li><li>Select <strong>Backup workspace</strong> to download a copy of your saved cases.</li></ol></details></div><Suspense fallback={<p className="ed-loading" role="status">Opening your local workspace…</p>}><Workstation /></Suspense></>}
+      {route === 'cases' && <><div className="ed-workspace-intro"><span className="ed-eyebrow">YOUR EVIDENCE WORKSPACE</span><h1>Keep the details together.</h1><p>Save a new case and its story together, or open one you already saved. Everything stays in this browser.</p><details className="ed-case-directions"><summary>How to save your first record</summary><ol aria-label="Quick case directions"><li>Select <strong>Save a new case</strong> and describe <strong>What happened?</strong>.</li><li>Select <strong>Continue to evidence</strong>, add optional details, then select <strong>Review case → Save case</strong>.</li><li>Find your words in <strong>Scam Ledger</strong>. For an existing case, enter <strong>Message or what happened</strong> and select <strong>Save record</strong>.</li><li>Select <strong>Backup workspace</strong> to download a copy of your saved cases.</li></ol></details></div><Suspense fallback={<p className="ed-loading" role="status">Opening your local workspace…</p>}><Workstation caseDraft={caseDraft} onCaseDraftChange={setCaseDraft} caseSaving={caseSaving} onCaseBusyChange={setCaseSaving} caseLeaveCheck={caseLeaveCheck} /></Suspense></>}
     </main>
     <footer className="ed-footer"><div><strong>SCAM-A-LAX · Larrina’s Edition</strong><span>{VERSION} · Built on Mikey’s open-source foundation.</span></div><p>Local storage is not encrypted. On a shared device, others may be able to read saved cases. Download a backup before clearing browser data.</p><div className="ed-footer-links"><a href="https://consumer.ftc.gov/articles/how-avoid-scam" target="_blank" rel="noopener noreferrer">FTC scam-awareness guide ↗</a><a href="https://github.com/larrinamsalva/SCAM-A-LAX" target="_blank" rel="noopener noreferrer">Source code ↗</a></div></footer>
-    <HelpAgent route={route} go={go} />
+    <HelpAgent route={route} go={go} busy={caseSaving} />
   </div>
 }

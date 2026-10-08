@@ -248,6 +248,8 @@ export function buildHandoffPacket({ item, profile = 'law', entities = [], cross
       type: item.type || '',
       status: item.status,
       createdAt: item.createdAt,
+      ...(item.incidentDate ? { incidentDate: item.incidentDate } : {}),
+      ...(item.reportedLoss ? { reportedLoss: item.reportedLoss } : {}),
       notes: config.includeCaseNotes ? (item.notes || '') : '',
     },
     evidence,
@@ -281,6 +283,8 @@ export function handoffToMarkdown(packet) {
   ]
 
   if (packet.case.notes) lines.push(`- Notes: ${packet.case.notes}`)
+  if (packet.case.incidentDate) lines.push(`- Incident date (user supplied): ${packet.case.incidentDate}`)
+  if (packet.case.reportedLoss) lines.push(`- Approximate loss (user supplied): ${packet.case.reportedLoss.amount} ${packet.case.reportedLoss.currency}`)
 
   lines.push('', '## Evidence manifest', '')
   if (!packet.evidence.length) lines.push('_No evidence records selected for this profile._')
@@ -288,6 +292,8 @@ export function handoffToMarkdown(packet) {
     lines.push(`### ${index + 1}. ${String(record.kind || 'evidence').toUpperCase()} — ${record.state || 'UNKNOWN'}`)
     lines.push(`- Evidence ID: ${record.id}`)
     lines.push(`- Recorded: ${record.recordedAt}`)
+    if (record.sourceType === 'USER_STATEMENT') lines.push('- Source: User statement, not independently verified')
+    if (record.correctsRecordId) lines.push(`- Clarifies record: ${record.correctsRecordId} (original retained)`)
     if (record.sha256) lines.push(`- SHA-256: \`${record.sha256}\``)
     if (record.fileName) lines.push(`- File: ${record.fileName} (${record.fileSize || 0} bytes)`)
     if (record.value) lines.push(`- Value: ${record.value}`)

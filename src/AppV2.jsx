@@ -6,6 +6,8 @@ import ScamRadar from './ScamRadar.jsx'
 import Screenshot, { SelectedScreenshot } from './Screenshot.jsx'
 import { clearScreenshots, exportScreenshots, isScreenshotFile, prepareScreenshot, removeScreenshot, saveScreenshot, screenshotError, SCREENSHOT_LIMIT } from './screenshots.js'
 import { readWorkspace, writeWorkspace } from './workspace-storage.js'
+import NewCaseForm from './NewCaseForm.jsx'
+import { emptyCaseDraft, findSavedCases, saveStoryCorrection, STORY_LIMIT } from './case-workflow.js'
 
 const STORAGE_KEY = 'scamalax.state.v1'
 const evidenceStates = ['OBSERVED', 'SUPPORTED', 'CORRELATED', 'INFERRED', 'DISPUTED', 'UNKNOWN']
@@ -82,6 +84,8 @@ function caseToMarkdown(item, entities, crossCaseMatches) {
     `- **Scam type:** ${item.type || 'Unknown'}`,
     `- **Status:** ${item.status}`,
     `- **Created:** ${item.createdAt}`,
+    ...(item.incidentDate ? [`- **Incident date (user supplied):** ${item.incidentDate}`] : []),
+    ...(item.reportedLoss ? [`- **Approximate loss (user supplied):** ${item.reportedLoss.amount} ${item.reportedLoss.currency}`] : []),
     `- **Exported:** ${nowIso()}`,
     '',
     '> Defensive evidence packet. Extracted entities and cross-case correlations are investigative aids, not proof of identity or wrongdoing.',
@@ -113,6 +117,8 @@ function caseToMarkdown(item, entities, crossCaseMatches) {
     lines.push(`### ${index + 1}. ${ev.kind.toUpperCase()} — ${ev.state}`)
     lines.push(`- **Evidence ID:** ${ev.id}`)
     lines.push(`- **Recorded:** ${ev.recordedAt}`)
+    if (ev.sourceType === 'USER_STATEMENT') lines.push('- **Source:** User statement, not independently verified')
+    if (ev.correctsRecordId) lines.push(`- **Clarifies record:** ${ev.correctsRecordId} (original retained)`)
     lines.push(`- **SHA-256:** \`${ev.sha256}\``)
     if (ev.fileName) lines.push(`- **File:** ${ev.fileName} (${ev.fileSize} bytes, ${ev.fileType || 'unknown type'})`)
     if (ev.value) lines.push(`- **Value:** ${ev.value}`)
@@ -200,7 +206,7 @@ function RelationshipGraph({ item, entities }) {
   )
 }
 
-function AppV2() {
+function AppV2({ caseDraft, onCaseDraftChange, onCaseBusyChange, caseLeaveCheck }) {
   const [initial] = useState(safeLoad)
   const [store, setStore] = useState(initial.store)
   const [storageError, setStorageError] = useState(initial.error)
@@ -211,12 +217,45 @@ function AppV2() {
   const [scanResult, setScanResult] = useState(null)
   const [entityFilter, setEntityFilter] = useState('all')
   const fileRef = useRef(null)
+  const recordForm = useRef(null)
   const [selectedFile, setSelectedFile] = useState(null)
   const [keepScreenshot, setKeepScreenshot] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [exporting, setExporting] = useState(false)
   const savingRef = useRef(false)
+  const caseHeading = useRef(null)
+  const [savedCaseId, setSavedCaseId] = useState(null)
+  const [caseQuery, setCaseQuery] = useState('')
+  const [caseFilter, setCaseFilter] = useState('all')
+  const [caseSort, setCaseSort] = useState('newest')
+  const [correctionTarget, setCorrectionTarget] = useState(null)
+  const [correctionText, setCorrectionText] = useState('')
+  const [correctionError, setCorrectionError] = useState('')
+  const draft = caseDraft || emptyCaseDraft(store.cases.length === 0)
+  const visibleCases = useMemo(() => findSavedCases(store.cases, { query: caseQuery, status: caseFilter, sort: caseSort }), [store.cases, caseQuery, caseFilter, caseSort])
+
+  const hasRecordDraft = () => {
+    if (!recordForm.current) return false
+    const values = new FormData(recordForm.current)
+    return Boolean(String(values.get('value') || '').trim() || String(values.get('note') || '').trim() || fileRef.current?.files?.length)
+  }
+  const confirmCaseChange = () => !savingRef.current && (!(correctionText.trim() || hasRecordDraft()) || window.confirm('Discard the unsaved record or clarification before leaving this case? Your saved records will stay unchanged.'))
+  const clearRecordDraft = () => {
+    recordForm.current?.reset()
+    if (fileRef.current) fileRef.current.value = ''
+    setSelectedFile(null)
+    setKeepScreenshot(true)
+    setCorrectionTarget(null)
+    setCorrectionText('')
+    setCorrectionError('')
+  }
+  useEffect(() => {
+    caseLeaveCheck.current = confirmCaseChange
+    const warnBeforeLeaving = (event) => { if (correctionText.trim() || hasRecordDraft() || savingRef.current) { event.preventDefault(); event.returnValue = '' } }
+    window.addEventListener('beforeunload', warnBeforeLeaving)
+    return () => { caseLeaveCheck.current = null; window.removeEventListener('beforeunload', warnBeforeLeaving) }
+  }, [correctionText, caseLeaveCheck])
 
   const activeCase = useMemo(
     () => store.cases.find((item) => item.id === store.activeCaseId) || null,
@@ -270,6 +309,7 @@ function AppV2() {
 
   const createCase = (event) => {
     event.preventDefault()
+    if (!confirmCaseChange()) return
     const data = new FormData(event.currentTarget)
     const title = String(data.get('title') || '').trim()
     if (!title) return
@@ -288,8 +328,37 @@ function AppV2() {
     }
     if (!commitStore((current) => ({ ...current, cases: [item, ...current.cases], activeCaseId: item.id }))) return
     setView('ledger')
+    clearRecordDraft()
     event.currentTarget.reset()
-    setNotice('Case created. Next: add your first record with Save record.')
+    setNotice('Your case was created successfully. Your story has not been added as an evidence record yet.')
+  }
+
+  const caseAndStorySaved = ({ store: next, item }) => {
+    setStore({ ...next, cases: next.cases.map(normalizeCase) })
+    setStorageError('')
+    setSavedCaseId(item.id)
+    setCaseQuery('')
+    setCaseFilter('all')
+    setView('ledger')
+    clearRecordDraft()
+    onCaseDraftChange(null)
+    requestAnimationFrame(() => { caseHeading.current?.focus(); caseHeading.current?.scrollIntoView({ block: 'start' }) })
+  }
+
+  const saveCorrection = async (event) => {
+    event.preventDefault()
+    if (!activeCase || savingRef.current) return
+    savingRef.current = true
+    setSaving(true)
+    setCorrectionError('')
+    try {
+      const next = await saveStoryCorrection(activeCase.id, correctionTarget, correctionText)
+      setStore({ ...next, cases: next.cases.map(normalizeCase) })
+      setCorrectionTarget(null)
+      setCorrectionText('')
+      setNotice('Clarification saved as a new statement. The original record was kept.')
+    } catch { setCorrectionError('The clarification could not be saved. Your text and the original record are unchanged; keep this text and try again.') }
+    finally { savingRef.current = false; setSaving(false) }
   }
 
   const addEvidence = async (event) => {
@@ -487,20 +556,29 @@ function AppV2() {
             <span className="count-pill">{store.cases.length}</span>
           </div>
 
-          <form className="case-form" onSubmit={createCase}>
+          <button className="primary" type="button" disabled={saving} onClick={() => onCaseDraftChange({ ...draft, open: true })}>{draft.story || draft.file ? 'Continue case draft' : 'Save a new case'}</button>
+          <details className="case-folder-form"><summary>Advanced: create an empty case folder</summary><p className="muted">This saves a folder only. Use Save a new case above to save your story with it.</p><form className="case-form" onSubmit={createCase}>
             <input name="title" placeholder="Case title" aria-label="Case title" required />
             <input name="victimAlias" placeholder="Victim alias (optional)" aria-label="Victim alias" />
             <input name="type" placeholder="Scam type (optional)" aria-label="Scam type" />
             <button className="primary" type="submit" disabled={saving}>+ New case</button>
-          </form>
+          </form></details>
+
+          <div className="case-search">
+            <label htmlFor="case-search">Find a saved case</label><input id="case-search" type="search" value={caseQuery} onChange={(event) => setCaseQuery(event.target.value)} placeholder="Story words, case name, ID, or file name…" />
+            <label htmlFor="case-filter">Filter case status</label><select id="case-filter" value={caseFilter} onChange={(event) => setCaseFilter(event.target.value)}><option value="all">All statuses</option>{['OPEN', 'CONTAINED', 'REFERRED', 'CLOSED'].map((status) => <option key={status}>{status}</option>)}</select>
+            <label htmlFor="case-sort">Sort saved cases</label><select id="case-sort" value={caseSort} onChange={(event) => setCaseSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="title">Case name A–Z</option></select>
+            <p className="case-match-count" role="status">{visibleCases.length} of {store.cases.length} saved cases shown</p>
+          </div>
 
           <div className="case-list">
-            {store.cases.length === 0 && <p className="muted empty">No cases yet. The internet has briefly behaved itself.</p>}
-            {store.cases.map((item) => (
+            {store.cases.length === 0 && <p className="muted empty">No saved cases yet. Use Save a new case to keep your story.</p>}
+            {store.cases.length > 0 && visibleCases.length === 0 && <div className="muted empty"><p>No cases match these filters. Your saved cases are unchanged.</p><button type="button" onClick={() => { setCaseQuery(''); setCaseFilter('all') }}>Clear case filters</button></div>}
+            {visibleCases.map((item) => (
               <button
                 key={item.id}
                 className={`case-row ${item.id === store.activeCaseId ? 'active' : ''}`}
-                onClick={() => { if (commitStore((current) => ({ ...current, activeCaseId: item.id }))) { setScanText(''); setScanResult(null); setSaveError('') } }}
+                onClick={() => { if (item.id !== store.activeCaseId && !confirmCaseChange()) return; if (commitStore((current) => ({ ...current, activeCaseId: item.id }))) { setScanText(''); setScanResult(null); setSaveError(''); if (item.id !== store.activeCaseId) clearRecordDraft() } }}
                 disabled={saving}
               >
                 <span>{item.title}</span>
@@ -517,6 +595,8 @@ function AppV2() {
 
         <section className="content">
           {storageError && <p className="record-save-error" role="alert">{storageError}</p>}
+          <NewCaseForm draft={draft} onChange={onCaseDraftChange} onSaved={caseAndStorySaved} onBeforeSave={confirmCaseChange} onDiscard={() => onCaseDraftChange(emptyCaseDraft(false))} onBusyChange={(busy) => { savingRef.current = busy; setSaving(busy); onCaseBusyChange(busy) }} />
+          {activeCase && savedCaseId === activeCase.id && <div className="case-saved-confirmation" role="status"><strong>Case and story saved in this browser.</strong><p>{activeCase.evidence.length} saved record(s). Your story is in Scam Ledger below. Select Backup workspace to keep a copy.</p></div>}
           <nav className="tabs" aria-label="SCAM-A-LAX modules">
             {[
               ['ledger', 'Scam Ledger'],
@@ -525,16 +605,16 @@ function AppV2() {
               ['rescue', 'Victim Rescue'],
               ['packet', 'Case Packet'],
             ].map(([id, label]) => (
-              <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}>{label}</button>
+              <button key={id} disabled={saving} className={view === id ? 'active' : ''} onClick={() => { if (id !== view && !confirmCaseChange()) return; if (id !== view) clearRecordDraft(); setView(id) }}>{label}</button>
             ))}
           </nav>
 
-          {!activeCase && (
+          {!activeCase && !draft.open && (
             <div className="hero-empty panel">
               <div className="toilet-mark">🚽</div>
               <span className="kicker">READY</span>
               <h2>Your story deserves a clear record.</h2>
-              <p>Create a local case using the form to organize messages, notes, and file receipts.</p>
+              <p>Select Save a new case to describe what happened and keep your first record with it.</p>
               <div className="terminal">
                 <div>&gt; evidence boundary: ACTIVE</div>
                 <div>&gt; derived intelligence authority: NONE</div>
@@ -549,13 +629,15 @@ function AppV2() {
               <section className="case-header panel">
                 <div>
                   <span className="kicker">ACTIVE CASE</span>
-                  <h2>{activeCase.title}</h2>
+                  <h2 ref={caseHeading} tabIndex={-1}>{activeCase.title}</h2>
                   <p>{activeCase.victimAlias || 'No victim alias'} · {activeCase.type || 'Type unknown'} · Created {new Date(activeCase.createdAt).toLocaleString()}</p>
+                  <p className="case-id">Case ID: {activeCase.id}</p>
+                  {(activeCase.incidentDate || activeCase.reportedLoss) && <p className="muted">User supplied: {activeCase.incidentDate ? `Incident date ${activeCase.incidentDate}` : 'Incident date not provided'}{activeCase.reportedLoss ? ` · Approximate loss ${activeCase.reportedLoss.amount} ${activeCase.reportedLoss.currency}` : ''}</p>}
                 </div>
                 <div className="case-head-meta">
                   <div className="intel-mini"><strong>{entities.length}</strong><span>entities</span></div>
                   <div className="intel-mini"><strong>{crossCaseMatches.length}</strong><span>cross-case</span></div>
-                  <select value={activeCase.status} onChange={(e) => setStatus(e.target.value)} aria-label="Case status">
+                  <select value={activeCase.status} disabled={saving} onChange={(e) => setStatus(e.target.value)} aria-label="Case status">
                     <option>OPEN</option><option>CONTAINED</option><option>REFERRED</option><option>CLOSED</option>
                   </select>
                 </div>
@@ -565,8 +647,8 @@ function AppV2() {
                 <div className="module-grid">
                   <section className="panel">
                     <div className="section-heading"><div><span className="kicker">SCAM LEDGER</span><h2>Add a record</h2></div></div>
-                    {activeCase.evidence.length === 0 && <p className="callout"><strong>Your case is ready. Add your first record.</strong><br />Choose note for your story, enter it below, then select Save record.</p>}
-                    <form className="evidence-form" onSubmit={addEvidence}>
+                    {activeCase.evidence.length === 0 && <p className="callout"><strong>Your case is ready. Add your first record.</strong><br />Your case was created successfully. Your story has not been added as an evidence record yet. Choose note, enter it below, then select Save record.</p>}
+                    <form ref={recordForm} className="evidence-form" onSubmit={addEvidence}>
                       <div className="two-col">
                         <div className="record-field"><label htmlFor="record-kind">Kind</label><select id="record-kind" name="kind" defaultValue="message" disabled={saving} aria-describedby="record-kind-help">{evidenceKinds.map((kind) => <option key={kind}>{kind}</option>)}</select><small id="record-kind-help" className="muted">Choose note for your story, or message for text you received.</small></div>
                         <label>Evidence state
@@ -596,14 +678,18 @@ function AppV2() {
                             <time>{new Date(ev.recordedAt).toLocaleString()}</time>
                           </div>
                           {ev.fileName && <strong>{ev.fileName}</strong>}
+                          {ev.sourceType === 'USER_STATEMENT' && <p className="case-source-label">User statement · not independently verified</p>}
+                          {ev.correctsRecordId && <p className="case-source-label">Clarifies record {ev.correctsRecordId}. Original retained.</p>}
                           {ev.value && <p>{ev.value}</p>}
                           {ev.screenshot?.id && <Screenshot record={ev} />}
                           {ev.note && <p className="note">{ev.note}</p>}
                           <code>sha256:{ev.sha256}</code>
-                          {ev.value && <button type="button" onClick={() => { setScanText(ev.value); setScanResult(analyzeMessage(ev.value)); setView('check') }}>Check record text</button>}
+                          {ev.value && <button type="button" disabled={saving} onClick={() => { if (!confirmCaseChange()) return; clearRecordDraft(); setScanText(ev.value); setScanResult(analyzeMessage(ev.value)); setView('check') }}>Check record text</button>}
+                          {ev.sourceType === 'USER_STATEMENT' && <button type="button" disabled={saving} onClick={() => { if (correctionText && !window.confirm('Discard the unsaved clarification before starting another?')) return; setCorrectionTarget(ev.id); setCorrectionText(''); setCorrectionError('') }}>Add a clarification</button>}
                         </article>
                       ))}
                     </div>
+                    {correctionTarget && <form className="case-correction" onSubmit={saveCorrection}><p>Add a correction or clarification as a new statement. The original record and its hash stay unchanged.</p><label htmlFor="case-correction">Correction or clarification</label><textarea id="case-correction" value={correctionText} onChange={(event) => setCorrectionText(event.target.value)} maxLength={STORY_LIMIT} rows={4} required disabled={saving} /><small>Source record: {correctionTarget}</small>{correctionError && <p role="alert" className="record-save-error">{correctionError}</p>}<div className="button-row"><button className="primary" disabled={saving || !correctionText.trim()}>{saving ? 'Saving clarification…' : 'Save clarification'}</button><button type="button" disabled={saving} onClick={() => { if (correctionText && !window.confirm('Discard this unsaved clarification? The original record will stay unchanged.')) return; setCorrectionTarget(null); setCorrectionText('') }}>Cancel clarification</button></div></form>}
                   </section>
                 </div>
               )}
