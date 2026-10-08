@@ -54,7 +54,7 @@ const topics = {
       'Open My cases and save any record you are still typing.',
       'Select Backup workspace. Look for the downloaded JSON file in your browser’s downloads.',
       'Keep the backup somewhere you can find it before clearing browser data.',
-      'Keep original screenshots and files separately. The backup stores their details and receipts, not the original file contents.',
+      'The JSON backup includes screenshots saved with a viewable copy. Keep original files separately too; receipt-only files are not included as images.',
     ],
     actions: [casesAction],
   },
@@ -71,10 +71,10 @@ const topics = {
   },
   check: {
     title: 'Check a message, then keep it if needed',
-    text: 'Check a message explains matched warning signs. A result does not verify someone’s identity or guarantee safety.',
+    text: 'Scam radar shows the strength of matched warning signs, from Low concern to Very high concern. It does not measure the chance of a scam or guarantee safety.',
     steps: [
       'Open Check a message and paste the words you want to review. Leave out passwords, codes, and account numbers.',
-      'Select Check this message and read the explanations.',
+      'Select Check this message. Read the Scam radar level and the matched reasons. Unknown or Low concern does not mean safe.',
       'Copy any words you want to keep before leaving that page. The check does not save them.',
       'In My cases, choose your case, open Scam Ledger, paste the words into Message or what happened, and select Save record.',
     ],
@@ -103,13 +103,14 @@ const topics = {
     actions: [casesAction],
   },
   files: {
-    title: 'Keep a receipt for an original file',
-    text: 'The record form can calculate a file’s SHA-256 receipt. Keep the original file yourself.',
+    title: 'Save a screenshot with your case',
+    text: 'Scam Ledger can keep a viewable screenshot in this browser and include it in JSON backups. Other files can still be kept as receipts.',
     steps: [
       'In My cases, select your case and open Scam Ledger.',
-      'Use Original file (optional) to choose a screenshot or file. Add a note if it helps explain the source.',
-      'Select Save record. The app records the receipt and file details, not the original file contents.',
-      'Keep the original file separately. This step does not read text from an image or verify that its contents are true.',
+      'Use Screenshot or original file (optional) to choose a PNG, JPG, or WebP image up to 10 MB. Leave Save a viewable copy with this case checked.',
+      'Type or paste the message’s words into Message or what happened if you want to check them. Image text is not read automatically.',
+      'Select Save record. Check the saved records list for your image, then select View screenshot to open it.',
+      'Use Check record text to open the scam radar for the words you entered. Use Backup workspace to keep a JSON copy including the saved image.',
     ],
     actions: [casesAction],
   },
@@ -165,6 +166,7 @@ export function answerHelpQuestion(question, route = 'home') {
   if (/\b(back ?up|backup)\b/.test(text)) return getHelpTopic('backup')
   if (/\b(report|packet|export|share|handoff|police)\b/.test(text)) return getHelpTopic('packet')
   if (/\b(number tracker|number lookup|phone number|caller|telephone)\b|\b(track|lookup|look up)\b.{0,24}\b(number|phone)\b/.test(text)) return getHelpTopic('numbers')
+  if (/\b(radar|meter|risk level)\b/.test(text)) return getHelpTopic('check')
   if (/\b(check|analyze|analyse|warning|legit|safe|suspicious)\b.{0,40}\b(message|email|text|scam|link|website)\b|\b(scamcheck|is this a scam)\b/.test(text)) return getHelpTopic('check')
   if (/\b(private|privacy|upload|cloud|online|encrypt\w*|account|login|device|browser|storage)\b/.test(text)) return getHelpTopic('privacy')
   if (/\b(phone|caller|telephone|number tracker|number lookup)\b/.test(text)) return getHelpTopic('numbers')

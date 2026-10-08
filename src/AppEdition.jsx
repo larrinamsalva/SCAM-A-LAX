@@ -3,6 +3,7 @@ import { academyChoices, getSupportSteps, lessons, officialResources, supportOpt
 import { analyzeMessage, MESSAGE_LIMIT } from './scamcheck.js'
 import { VERSION } from './version.js'
 import HelpAgent from './HelpAgent.jsx'
+import ScamRadar from './ScamRadar.jsx'
 import './edition.css'
 
 const Workstation = lazy(() => import('./AppV3.jsx'))
@@ -84,7 +85,7 @@ function StartHere({ go }) {
     { id: 'case', title: 'Create a case folder', body: <><p>Open <strong>My cases</strong>, enter a short <strong>Case title</strong>, then select <strong>+ New case</strong>. For example: “Suspicious delivery text.”</p><p>A case is a folder for this incident. Creating it does not save your story yet.</p></> },
     { id: 'story', title: 'Save what happened', body: <><p>Inside your case, open <strong>Scam Ledger</strong>. Choose <strong>Kind → note</strong> for your story, or <strong>message</strong> for a message you received.</p><p>Fill in <strong>Message or what happened</strong>, then select <strong>Save record</strong>. You can add more records to the same case later.</p></> },
     { id: 'check', title: 'Check that your record was added', body: <><p>Your words should appear in the saved records list. After your first save, the count changes from <strong>0 saved records</strong> to <strong>1 saved record</strong>.</p><p>If it still shows zero, the case exists but your story has not been added yet.</p></> },
-    { id: 'backup', title: 'Keep a backup', body: <><p>Select <strong>Backup workspace</strong> to download a copy of your cases. Keep that file somewhere you can find it.</p><p>Cases stay in this browser on this device. Keep original screenshots and files separately; the backup contains their details and receipts, not the original file contents.</p></> },
+    { id: 'backup', title: 'Keep a backup', body: <><p>Select <strong>Backup workspace</strong> to download your cases, including screenshots saved with a viewable copy. Keep that file somewhere you can find it.</p><p>Cases stay in this browser on this device. Keep original files separately too. Files saved as receipts only are not included as images.</p></> },
     { id: 'report', title: 'Prepare a report when you are ready', body: <><p>Open <strong>Case Packet</strong>. On a phone, swipe the tab row that starts with Scam Ledger to find it.</p><p>Choose <strong>Download Markdown packet</strong> for a text report, or <strong>Download JSON archive</strong> for a structured copy. Review the file before deciding who to share it with. Downloading a report does not send it anywhere.</p></> },
   ]
   return <div className="ed-narrow">
@@ -116,6 +117,7 @@ function MessageCheck({ go }) {
     </form>
     {result && <section ref={resultRef} tabIndex={-1} className="ed-card ed-results" aria-labelledby="check-result-title">
       <span className="ed-eyebrow">PATTERN CHECK · HUMAN REVIEW NEEDED</span><h2 id="check-result-title">{result.findings.length ? `${result.findings.length} warning sign${result.findings.length === 1 ? '' : 's'} to review` : 'No known patterns matched. Safety is still unverified.'}</h2>
+      <ScamRadar result={result} />
       <p>This is a local text check, not an identity check or a verdict. It can miss scams and flag legitimate messages. Verify requests through a contact you already trust.</p>
       <div className="ed-findings">{result.findings.map((finding) => <article key={finding.id}><div className="ed-finding-heading"><Icon name="shield" size={19} /><h3>{finding.label}</h3></div><div className="ed-excerpt">Matched words: <q>{finding.excerpt}</q></div><p>{finding.why}</p><p className="ed-next-step"><strong>Next step:</strong> {finding.action}</p></article>)}</div>
       <div className="ed-button-row"><button className="ed-primary" onClick={() => go('help')}>Build my next steps</button><button className="ed-secondary" onClick={() => go('cases')}>Open My cases to save a record</button></div><p className="ed-small">Opening My cases does not automatically save this message or its analysis. Copy any text you want to keep before leaving this page.</p>

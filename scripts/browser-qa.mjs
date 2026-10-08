@@ -3,6 +3,7 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
+import { createHash } from 'node:crypto'
 import { academyChoices, lessons } from '../src/academy.js'
 
 const base = process.env.QA_BASE_URL || 'http://127.0.0.1:4175/SCAM-A-LAX/'
@@ -11,6 +12,7 @@ const origin = new URL(base).origin
 const results = []
 let server
 let browser
+let imageFixture
 
 async function visible(locator) {
   await locator.waitFor({ state: 'visible' })
@@ -83,6 +85,9 @@ try {
     await page.getByLabel('Message, email, or call notes').fill('Buy gift cards right now. Don’t tell anyone. https://example.invalid/secret')
     await page.getByRole('button', { name: 'Check this message', exact: true }).click()
     await visible(page.getByRole('heading', { name: '3 warning signs to review' }))
+    await visible(page.getByRole('meter', { name: 'Scam radar warning strength', exact: true }))
+    assert.equal(await page.getByRole('meter', { name: 'Scam radar warning strength', exact: true }).getAttribute('aria-valuenow'), '66')
+    await visible(page.getByRole('heading', { name: 'High concern', exact: true }))
     await visible(page.getByRole('heading', { name: 'Secrecy or isolation request', exact: true }))
     const savedAfterCheck = await page.evaluate(() => JSON.parse(localStorage.getItem('scamalax.state.v1')))
     assert.deepEqual(savedAfterCheck.cases[0], legacyCase)
@@ -91,6 +96,8 @@ try {
     assert.equal(await page.getByRole('heading', { name: '3 warning signs to review' }).count(), 0, 'Edited input retained a stale result')
     await page.getByRole('button', { name: 'Check this message', exact: true }).click()
     await visible(page.getByRole('heading', { name: 'No known patterns matched. Safety is still unverified.' }))
+    assert.equal(await page.getByRole('meter', { name: 'Scam radar warning strength', exact: true }).count(), 0, 'An unmatched message became a low/safe meter reading')
+    await visible(page.getByRole('status', { name: 'Unknown · safety unverified', exact: true }))
     await settle(page)
     await page.screenshot({ path: `test-results/${name}-check.png`, fullPage: true })
     await page.reload()
@@ -227,6 +234,74 @@ try {
     await settle(page)
     await page.screenshot({ path: `test-results/${name}-first-record.png`, fullPage: true })
 
+    // A real image is saved unchanged, with its manually entered words, and exported.
+    const screenshotBytes = await page.screenshot()
+    const screenshotFile = { name: 'fictional-message.png', mimeType: 'image/png', buffer: screenshotBytes }
+    imageFixture = screenshotFile
+    const screenshotWords = 'Fictional transcription: Send gift cards right now. Do not tell anyone. Read me your verification code.'
+    await page.getByLabel('Message or what happened', { exact: true }).fill(screenshotWords)
+    await page.getByLabel('Screenshot or original file (optional)', { exact: true }).setInputFiles(screenshotFile)
+    await visible(page.getByRole('img', { name: 'Selected screenshot preview', exact: true }))
+    await page.getByRole('button', { name: 'Save record', exact: true }).click()
+    await visible(page.getByRole('heading', { name: '2 saved records', exact: true }))
+    await page.reload()
+    const savedImage = page.getByRole('img', { name: 'Saved screenshot: fictional-message.png', exact: true })
+    await visible(savedImage)
+    await savedImage.evaluate((image) => image.decode())
+    const withImage = await page.evaluate(() => JSON.parse(localStorage.getItem('scamalax.state.v1')))
+    const imageRecord = withImage.cases[0].evidence[0]
+    assert.equal(imageRecord.value, screenshotWords, 'Attaching an image discarded the written description')
+    assert.equal(imageRecord.state, 'OBSERVED')
+    assert.equal(imageRecord.sha256, createHash('sha256').update(screenshotBytes).digest('hex'))
+    assert.ok(imageRecord.screenshot.id)
+    assert.equal(JSON.stringify(withImage).includes('data:image'), false, 'Image bytes were placed in text-only localStorage')
+    await page.getByRole('button', { name: 'View screenshot fictional-message.png', exact: true }).click()
+    const imageDialog = page.getByRole('dialog', { name: 'fictional-message.png', exact: true })
+    await visible(imageDialog)
+    assert.equal(await imageDialog.evaluate((dialog) => dialog.matches(':modal')), true)
+    await page.keyboard.press('Escape')
+    assert.equal(await imageDialog.count(), 0)
+    assert.equal(await page.getByRole('button', { name: 'View screenshot fictional-message.png', exact: true }).evaluate((button) => button === document.activeElement), true)
+    const originalDownload = page.waitForEvent('download')
+    await page.getByRole('link', { name: 'Download original image', exact: true }).click()
+    assert.deepEqual(await readFile(await (await originalDownload).path()), screenshotBytes)
+    const imageBackupDownload = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Backup workspace', exact: true }).click()
+    const imageBackup = JSON.parse(await readFile(await (await imageBackupDownload).path(), 'utf8'))
+    assert.deepEqual(imageBackup.store, withImage)
+    assert.equal(imageBackup.attachments.length, 1)
+    assert.equal(imageBackup.attachments[0].id, imageRecord.screenshot.id)
+    assert.equal(imageBackup.attachments[0].dataUrl, 'data:image/png;base64,' + screenshotBytes.toString('base64'))
+    await settle(page)
+    await page.screenshot({ path: `test-results/${name}-saved-screenshot.png`, fullPage: true })
+    await page.locator('.saved-screenshot').screenshot({ path: `test-results/${name}-screenshot-card.png` })
+    await page.getByRole('button', { name: 'Case Packet', exact: true }).click()
+    const imageArchiveDownload = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Download JSON archive', exact: true }).click()
+    const imageArchive = JSON.parse(await readFile(await (await imageArchiveDownload).path(), 'utf8'))
+    assert.equal(imageArchive.attachments[0].dataUrl, imageBackup.attachments[0].dataUrl)
+    await page.getByRole('button', { name: 'Open Evidence Intake', exact: true }).click()
+    const imageHandoffDownload = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Download JSON handoff', exact: true }).click()
+    const imageHandoff = JSON.parse(await readFile(await (await imageHandoffDownload).path(), 'utf8'))
+    assert.equal(imageHandoff.attachments[0].dataUrl, imageBackup.attachments[0].dataUrl)
+    await page.getByRole('button', { name: 'Return to workstation', exact: true }).click()
+    await page.locator('.evidence-card').filter({ hasText: 'fictional-message.png' }).getByRole('button', { name: 'Check record text', exact: true }).click()
+    await visible(page.getByRole('heading', { name: 'Very high concern', exact: true }))
+    assert.equal(await page.getByRole('meter', { name: 'Scam radar warning strength', exact: true }).getAttribute('aria-valuenow'), '90')
+    await page.getByText('How to read this meter', { exact: true }).click()
+    await settle(page)
+    await page.screenshot({ path: `test-results/${name}-scam-radar.png`, fullPage: true })
+    await page.getByRole('region', { name: 'Scam radar', exact: true }).screenshot({ path: `test-results/${name}-radar-meter.png` })
+    for (const [text, label, points] of [['Urgent: reply today.', 'Low concern', '14'], ['Gift cards requested.', 'Caution', '28'], [screenshotWords, 'Very high concern', '90']]) {
+      await page.getByLabel('Case message to check', { exact: true }).fill(text)
+      assert.equal(await page.getByRole('meter', { name: 'Scam radar warning strength', exact: true }).count(), 0, 'Edited text retained a stale radar')
+      await page.getByRole('button', { name: 'Analyze locally', exact: true }).click()
+      await visible(page.getByRole('heading', { name: label, exact: true }))
+      assert.equal(await page.getByRole('meter', { name: 'Scam radar warning strength', exact: true }).getAttribute('aria-valuenow'), points)
+    }
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('scamalax.state.v1'))), withImage, 'Radar changed source evidence')
+
     // A separate fixture exercises phone lookup without changing source evidence.
     const phoneCases = [
       { ...legacyCase, id: 'phone-a', title: 'First phone QA case', evidence: [
@@ -275,8 +350,76 @@ try {
     assert.deepEqual(openedPhoneStore.cases, phoneCases, 'Opening a phone match changed the source evidence')
     assert.deepEqual(errors, [], `${name} browser errors`)
     assert.deepEqual(outsideRequests, [], `${name} unexpectedly transmitted data outside the app origin`)
-    results.push({ viewport: name, status: 'passed', stories: ['home', 'five-step guide preserves existing cases', 'helper navigation, keyboard close, private questions, and unsaved draft preservation', 'phone tracker matches, no-match uncertainty, country-code separation, and source-case opening', 'message-check privacy and invalidation', 'help persistence', '20 academy scenarios and persistence', 'legacy case preservation', 'case export', 'preview-before-commit intake and handoff', 'inferred-only scan recording', 'empty-case directions and unsaved draft preservation', 'first record survives reload and workspace backup'], browserErrors: errors.length, externalRequests: outsideRequests.length })
+    results.push({ viewport: name, status: 'passed', stories: ['home', 'five-step guide preserves existing cases', 'helper navigation, keyboard close, private questions, and unsaved draft preservation', 'phone tracker matches, no-match uncertainty, country-code separation, and source-case opening', 'message-check privacy and invalidation', 'help persistence', '20 academy scenarios and persistence', 'legacy case preservation', 'case export', 'preview-before-commit intake and handoff', 'inferred-only scan recording', 'empty-case directions and unsaved draft preservation', 'first record survives reload and workspace backup', 'screenshot reload, modal keyboard close, original download, preserved description, and image-inclusive workspace/case/handoff JSON', 'four radar bands, unknown state, edited-text invalidation, and unchanged evidence'], browserErrors: errors.length, externalRequests: outsideRequests.length })
     await context.close()
+  }
+
+  const countImages = (page) => page.evaluate(() => new Promise((resolve, reject) => {
+    const request = indexedDB.open('scamalax.screenshots.v1', 1)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const db = request.result
+      const transaction = db.transaction('images', 'readonly')
+      const count = transaction.objectStore('images').count()
+      transaction.oncomplete = () => { db.close(); resolve(count.result) }
+      transaction.onabort = () => { db.close(); reject(transaction.error) }
+    }
+  }))
+
+  for (const failure of ['workspace-full', 'image-full', 'image-blocked', 'invalid-image', 'receipt-only']) {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+    try {
+      const page = await context.newPage()
+      const errors = []
+      const outsideRequests = []
+      page.on('pageerror', (error) => errors.push(error.message))
+      page.on('request', (request) => { if (new URL(request.url()).origin !== origin) outsideRequests.push(request.url()) })
+      await page.goto(base)
+      await page.evaluate(() => localStorage.setItem('scamalax.state.v1', JSON.stringify({ cases: [{ id: 'case-failure', title: 'Fictional storage check', status: 'OPEN', createdAt: '2026-01-01T00:00:00.000Z', evidence: [], timeline: [], analystLinks: [], notes: '' }], activeCaseId: 'case-failure' })))
+      await page.getByRole('button', { name: 'My cases', exact: true }).click()
+      await page.getByLabel('Message or what happened', { exact: true }).fill('Fictional description that must not disappear.')
+      const before = await page.evaluate(() => localStorage.getItem('scamalax.state.v1'))
+      if (failure === 'workspace-full') await page.evaluate(() => {
+        window.qaOriginalSetItem = Storage.prototype.setItem
+        Storage.prototype.setItem = function (key, value) {
+          if (key === 'scamalax.state.v1') throw new DOMException('Full', 'QuotaExceededError')
+          return window.qaOriginalSetItem.call(this, key, value)
+        }
+      })
+      if (failure === 'image-full') await page.evaluate(() => { IDBObjectStore.prototype.add = () => { throw new DOMException('Full', 'QuotaExceededError') } })
+      if (failure === 'image-blocked') await page.evaluate(() => { indexedDB.open = () => { throw new DOMException('Blocked', 'SecurityError') } })
+      const file = failure === 'invalid-image' ? { name: 'pretend-screenshot.png', mimeType: 'image/png', buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.invalid/image"/></svg>') } : imageFixture
+      await page.getByLabel('Screenshot or original file (optional)', { exact: true }).setInputFiles(file)
+      if (failure === 'receipt-only') await page.getByRole('checkbox', { name: 'Save a viewable copy with this case', exact: true }).uncheck()
+      await page.getByRole('button', { name: 'Save record', exact: true }).click()
+      if (failure === 'receipt-only') {
+        await visible(page.getByRole('heading', { name: '1 saved record', exact: true }))
+        const record = await page.evaluate(() => JSON.parse(localStorage.getItem('scamalax.state.v1')).cases[0].evidence[0])
+        assert.equal(record.screenshot, undefined)
+        assert.equal(record.value, 'Fictional description that must not disappear.')
+        assert.equal(record.sha256, createHash('sha256').update(imageFixture.buffer).digest('hex'))
+      } else {
+        await visible(page.getByRole('alert').filter({ hasText: failure === 'workspace-full' ? 'The record could not be saved.' : failure === 'image-full' ? 'Browser storage is full.' : failure === 'image-blocked' ? 'Screenshot storage is unavailable.' : 'Choose a valid PNG, JPG, or WebP screenshot.' }))
+        assert.equal(await page.evaluate(() => localStorage.getItem('scamalax.state.v1')), before, 'Failed screenshot save changed existing records')
+        assert.equal(await page.getByLabel('Message or what happened', { exact: true }).inputValue(), 'Fictional description that must not disappear.')
+        assert.equal(await page.getByLabel('Screenshot or original file (optional)', { exact: true }).evaluate((input) => input.files.length), 1)
+        if (failure === 'workspace-full' || failure === 'image-full') assert.equal(await countImages(page), 0, 'A failed record write left a stored image behind')
+      }
+      if (failure === 'workspace-full') {
+        await page.evaluate(() => { Storage.prototype.setItem = window.qaOriginalSetItem })
+        await page.getByRole('button', { name: 'Save record', exact: true }).click()
+        await visible(page.getByRole('heading', { name: '1 saved record', exact: true }))
+        assert.equal(await countImages(page), 1)
+        page.once('dialog', (dialog) => dialog.accept())
+        await page.getByRole('button', { name: 'Delete all local data', exact: true }).click()
+        await visible(page.getByText('Local case data and saved screenshots deleted.', { exact: true }))
+        assert.equal(await countImages(page), 0, 'Delete all local data kept saved images')
+        assert.equal(await page.evaluate(() => localStorage.getItem('scamalax.state.v1')), null)
+      }
+      assert.deepEqual(errors, [])
+      assert.deepEqual(outsideRequests, [])
+      results.push({ story: failure + ' screenshot flow preserves data or explicitly saves receipt only', status: 'passed' })
+    } finally { await context.close() }
   }
 
   const shortContext = await browser.newContext({ viewport: { width: 844, height: 390 } })
@@ -306,6 +449,9 @@ try {
   await shortPage.getByRole('button', { name: 'Number tracker', exact: true }).click()
   await visible(shortPage.getByRole('alert').filter({ hasText: 'Saved cases could not be read in this browser.' }))
   assert.equal(await shortPage.evaluate(() => localStorage.getItem('scamalax.state.v1')), 'not-json', 'Tracker overwrote unreadable case data')
+  await shortPage.getByRole('button', { name: 'My cases', exact: true }).click()
+  await visible(shortPage.getByRole('alert').filter({ hasText: 'Saved cases could not be read in this browser.' }))
+  assert.equal(await shortPage.evaluate(() => localStorage.getItem('scamalax.state.v1')), 'not-json', 'Workstation overwrote unreadable case data')
   results.push({ story: 'helper remains usable in a short landscape viewport', status: 'passed' })
   await shortContext.close()
 

@@ -32,7 +32,8 @@ test('backups and reports explain their different scope and keep originals separ
   const backup = answerHelpQuestion('How do I back up my cases?')
   assert.equal(backup.id, 'backup')
   assert.match(backup.text, /whole case workspace.*one case/)
-  assert.match(backup.steps.join(' '), /not the original file contents/)
+  assert.match(backup.steps.join(' '), /JSON backup includes screenshots saved with a viewable copy/)
+  assert.match(backup.steps.join(' '), /receipt-only files are not included as images/)
   const report = answerHelpQuestion('Prepare a report for the police')
   assert.equal(report.id, 'packet')
   assert.match(report.text, /does not send it/)
@@ -49,7 +50,9 @@ test('checking does not save messages and helper questions do not become evidenc
   assert.match(privacy.steps.join(' '), /disappear on refresh.*do not become case records/)
   const files = answerHelpQuestion('How do I add a screenshot?')
   assert.equal(files.id, 'files')
-  assert.match(files.steps.join(' '), /not the original file contents/)
+  assert.match(files.steps.join(' '), /Save a viewable copy with this case/)
+  assert.match(files.steps.join(' '), /Image text is not read automatically/)
+  assert.equal(answerHelpQuestion('How does the scam radar meter work?').id, 'check')
 })
 
 test('an exposure question leads to the response checklist and next-step help follows the page', () => {

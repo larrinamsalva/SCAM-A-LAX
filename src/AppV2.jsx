@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { entityLabel, extractEntitiesFromEvidence, getCrossCaseMatches } from './intelligence'
 import { analyzeMessage } from './scamcheck.js'
 import { VERSION } from './version.js'
+import ScamRadar from './ScamRadar.jsx'
+import Screenshot, { SelectedScreenshot } from './Screenshot.jsx'
+import { clearScreenshots, exportScreenshots, isScreenshotFile, prepareScreenshot, removeScreenshot, saveScreenshot, screenshotError, SCREENSHOT_LIMIT } from './screenshots.js'
+import { readWorkspace, writeWorkspace } from './workspace-storage.js'
 
 const STORAGE_KEY = 'scamalax.state.v1'
 const evidenceStates = ['OBSERVED', 'SUPPORTED', 'CORRELATED', 'INFERRED', 'DISPUTED', 'UNKNOWN']
@@ -37,14 +41,11 @@ function normalizeCase(item) {
 
 function safeLoad() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
-    if (parsed && Array.isArray(parsed.cases)) {
-      return { ...parsed, cases: parsed.cases.map(normalizeCase) }
-    }
+    const parsed = readWorkspace()
+    return { store: { ...parsed, cases: parsed.cases.map(normalizeCase) }, error: '' }
   } catch {
-    // Corrupt local state should not break the application.
+    return { store: { cases: [], activeCaseId: null }, error: 'Saved cases could not be read in this browser. Existing data has not been changed. Keep any backup you have.' }
   }
-  return { cases: [], activeCaseId: null }
 }
 
 async function sha256(data) {
@@ -200,7 +201,9 @@ function RelationshipGraph({ item, entities }) {
 }
 
 function AppV2() {
-  const [store, setStore] = useState(safeLoad)
+  const [initial] = useState(safeLoad)
+  const [store, setStore] = useState(initial.store)
+  const [storageError, setStorageError] = useState(initial.error)
   const [view, setView] = useState('ledger')
   const [notice, setNotice] = useState('')
   const [rescueChecks, setRescueChecks] = useState({})
@@ -208,6 +211,12 @@ function AppV2() {
   const [scanResult, setScanResult] = useState(null)
   const [entityFilter, setEntityFilter] = useState('all')
   const fileRef = useRef(null)
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [keepScreenshot, setKeepScreenshot] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const savingRef = useRef(false)
 
   const activeCase = useMemo(
     () => store.cases.find((item) => item.id === store.activeCaseId) || null,
@@ -234,9 +243,17 @@ function AppV2() {
     [entities],
   )
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(store))
-  }, [store])
+  const commitStore = (updater) => {
+    try {
+      const next = writeWorkspace((current) => updater({ ...current, cases: current.cases.map(normalizeCase) }))
+      setStore(next)
+      setStorageError('')
+      return true
+    } catch {
+      setStorageError('Changes could not be saved in this browser. Existing records have not been replaced. Keep any unsaved text or image and try again.')
+      return false
+    }
+  }
 
   useEffect(() => {
     if (!notice) return undefined
@@ -245,10 +262,10 @@ function AppV2() {
   }, [notice])
 
   const patchCase = (caseId, updater) => {
-    setStore((current) => ({
-      ...current,
-      cases: current.cases.map((item) => (item.id === caseId ? normalizeCase(updater(normalizeCase(item))) : item)),
-    }))
+    return commitStore((current) => {
+      if (!current.cases.some((item) => item.id === caseId)) throw new Error('Case no longer exists')
+      return { ...current, cases: current.cases.map((item) => item.id === caseId ? normalizeCase(updater(item)) : item) }
+    })
   }
 
   const createCase = (event) => {
@@ -269,7 +286,7 @@ function AppV2() {
       analystLinks: [],
       timeline: [{ id: uid('event'), at: createdAt, text: 'Case created.' }],
     }
-    setStore((current) => ({ ...current, cases: [item, ...current.cases], activeCaseId: item.id }))
+    if (!commitStore((current) => ({ ...current, cases: [item, ...current.cases], activeCaseId: item.id }))) return
     setView('ledger')
     event.currentTarget.reset()
     setNotice('Case created. Next: add your first record with Save record.')
@@ -277,7 +294,7 @@ function AppV2() {
 
   const addEvidence = async (event) => {
     event.preventDefault()
-    if (!activeCase) return
+    if (!activeCase || savingRef.current) return
     const form = event.currentTarget
     const data = new FormData(form)
     const kind = String(data.get('kind') || 'note')
@@ -290,36 +307,46 @@ function AppV2() {
       return
     }
 
-    let hashInput
-    let fileMeta = {}
-    if (file) {
-      const bytes = await file.arrayBuffer()
-      hashInput = bytes
-      fileMeta = { fileName: file.name, fileSize: file.size, fileType: file.type }
-    } else {
-      hashInput = `${kind}\n${value}`
-    }
-
-    const recordedAt = nowIso()
-    const evidence = {
-      id: uid('ev'),
-      kind: file ? 'file' : kind,
-      state,
-      value: file ? '' : value,
-      note,
-      recordedAt,
-      sha256: await sha256(hashInput),
-      ...fileMeta,
-    }
-
-    patchCase(activeCase.id, (item) => ({
-      ...item,
-      evidence: [evidence, ...item.evidence],
-      timeline: [{ id: uid('event'), at: recordedAt, text: `Evidence added: ${evidence.kind} (${evidence.state}).` }, ...item.timeline],
-    }))
-    form.reset()
-    if (fileRef.current) fileRef.current.value = ''
-    setNotice('Record added. It now appears in this case’s saved records.')
+    if (file?.size > 25 * 1024 * 1024) { setSaveError('Choose a file smaller than 25 MB. Your record has not been saved.'); return }
+    if (file && keepScreenshot && isScreenshotFile(file) && file.size > SCREENSHOT_LIMIT) { setSaveError('Choose a screenshot smaller than 10 MB. Your record has not been saved.'); return }
+    savingRef.current = true
+    setSaving(true)
+    setSaveError('')
+    let image
+    let imageSaved = false
+    try {
+      const hashInput = file ? await file.arrayBuffer() : `${kind}\n${value}`
+      const hash = await sha256(hashInput)
+      const fileMeta = file ? { fileName: file.name, fileSize: file.size, fileType: file.type } : {}
+      if (file && keepScreenshot && isScreenshotFile(file)) {
+        image = await prepareScreenshot(file, hashInput, hash)
+        await saveScreenshot(image)
+        imageSaved = true
+        fileMeta.screenshot = { id: image.id, type: image.type, width: image.width, height: image.height }
+        fileMeta.fileType = image.type
+      }
+      const recordedAt = nowIso()
+      const evidence = { id: uid('ev'), kind: file ? 'file' : kind, state, value, note, recordedAt, sha256: hash, ...fileMeta }
+      const saved = patchCase(activeCase.id, (item) => ({
+        ...item,
+        evidence: [evidence, ...item.evidence],
+        timeline: [{ id: uid('event'), at: recordedAt, text: `Evidence added: ${evidence.kind} (${evidence.state}).` }, ...item.timeline],
+      }))
+      if (!saved) {
+        if (imageSaved) await removeScreenshot(image.id)
+        imageSaved = false
+        setSaveError('The record could not be saved. Your text and selected file are still here; keep the original image and try again.')
+        return
+      }
+      form.reset()
+      if (fileRef.current) fileRef.current.value = ''
+      setSelectedFile(null)
+      setKeepScreenshot(true)
+      setNotice(imageSaved ? 'Screenshot saved with this case. It will be included in JSON backups.' : 'Record added. It now appears in this case’s saved records.')
+    } catch (error) {
+      if (imageSaved) await removeScreenshot(image.id).catch(() => {})
+      setSaveError(screenshotError(error))
+    } finally { savingRef.current = false; setSaving(false) }
   }
 
   const runScamCheck = () => setScanResult(analyzeMessage(scanText))
@@ -337,11 +364,11 @@ function AppV2() {
       recordedAt,
       sha256: await sha256(`message\n${scanText.trim()}`),
     }
-    patchCase(activeCase.id, (item) => ({
+    if (!patchCase(activeCase.id, (item) => ({
       ...item,
       evidence: [evidence, ...item.evidence],
       timeline: [{ id: uid('event'), at: recordedAt, text: 'ScamCheck analysis recorded as INFERRED.' }, ...item.timeline],
-    }))
+    }))) return
     setNotice('Analysis recorded as INFERRED, not proof.')
   }
 
@@ -360,18 +387,18 @@ function AppV2() {
     }
     const at = nowIso()
     const link = { id: uid('link'), from, to, relation, state, note, createdAt: at }
-    patchCase(activeCase.id, (item) => ({
+    if (!patchCase(activeCase.id, (item) => ({
       ...item,
       analystLinks: [link, ...item.analystLinks],
       timeline: [{ id: uid('event'), at, text: `Analyst link added: ${relation} (${state}).` }, ...item.timeline],
-    }))
+    }))) return
     event.currentTarget.reset()
     setNotice('Analyst relationship added with explicit evidence state.')
   }
 
   const removeAnalystLink = (linkId) => {
     if (!activeCase) return
-    patchCase(activeCase.id, (item) => ({ ...item, analystLinks: item.analystLinks.filter((link) => link.id !== linkId) }))
+    if (!patchCase(activeCase.id, (item) => ({ ...item, analystLinks: item.analystLinks.filter((link) => link.id !== linkId) }))) return
     setNotice('Analyst link removed.')
   }
 
@@ -380,30 +407,40 @@ function AppV2() {
     patchCase(activeCase.id, (item) => ({ ...item, notes: value }))
   }
 
-  const exportCase = (format) => {
-    if (!activeCase) return
-    const base = activeCase.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'case'
-    if (format === 'json') {
-      const packet = {
-        schema: 'scamalax.case.v2',
-        exportedAt: nowIso(),
-        appVersion: VERSION,
-        case: activeCase,
-        derivedIntelligence: {
-          authority: 'NON_AUTHORITATIVE',
-          entities,
-          crossCaseMatches,
-        },
+  const exportCase = async (format) => {
+    if (!activeCase || exporting) return
+    setExporting(true)
+    try {
+      const base = activeCase.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'case'
+      if (format === 'json') {
+        const packet = {
+          schema: 'scamalax.case.v2',
+          exportedAt: nowIso(),
+          appVersion: VERSION,
+          case: activeCase,
+          derivedIntelligence: { authority: 'NON_AUTHORITATIVE', entities, crossCaseMatches },
+        }
+        const attachments = await exportScreenshots([activeCase])
+        if (attachments.length) packet.attachments = attachments
+        download(`${base}-scamalax-v2.json`, JSON.stringify(packet, null, 2), 'application/json')
+      } else {
+        download(`${base}-scamalax-v2.md`, caseToMarkdown(activeCase, entities, crossCaseMatches), 'text/markdown')
       }
-      download(`${base}-scamalax-v2.json`, JSON.stringify(packet, null, 2), 'application/json')
-    } else {
-      download(`${base}-scamalax-v2.md`, caseToMarkdown(activeCase, entities, crossCaseMatches), 'text/markdown')
-    }
+    } catch { setNotice('Export could not include a saved screenshot. Your records are unchanged. Keep or download the original image separately.') }
+    finally { setExporting(false) }
   }
 
-  const exportWorkspace = () => {
-    const packet = { schema: 'scamalax.workspace.v1', exportedAt: nowIso(), appVersion: VERSION, store }
-    download('scamalax-workspace-backup.json', JSON.stringify(packet, null, 2), 'application/json')
+  const exportWorkspace = async () => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      const current = readWorkspace()
+      const packet = { schema: 'scamalax.workspace.v1', exportedAt: nowIso(), appVersion: VERSION, store: current }
+      const attachments = await exportScreenshots(current.cases)
+      if (attachments.length) packet.attachments = attachments
+      download('scamalax-workspace-backup.json', JSON.stringify(packet, null, 2), 'application/json')
+    } catch { setNotice('Backup could not be created. Your records are unchanged. Keep or download original images separately and try again.') }
+    finally { setExporting(false) }
   }
 
   const setStatus = (status) => {
@@ -416,11 +453,13 @@ function AppV2() {
     }))
   }
 
-  const removeAllLocalData = () => {
-    if (!window.confirm('Delete every local SCAM-A-LAX case from this browser? This cannot be undone.')) return
-    localStorage.removeItem(STORAGE_KEY)
+  const removeAllLocalData = async () => {
+    if (saving || exporting) return
+    if (!window.confirm('Delete every local SCAM-A-LAX case and saved screenshot from this browser? This cannot be undone.')) return
+    try { localStorage.removeItem(STORAGE_KEY) } catch { setStorageError('Local data could not be deleted because browser storage is unavailable.'); return }
     setStore({ cases: [], activeCaseId: null })
-    setNotice('Local case data deleted.')
+    try { await clearScreenshots(); setNotice('Local case data and saved screenshots deleted.') }
+    catch { setNotice('Cases were deleted, but screenshot storage could not be cleared. Try Delete all local data again to remove stored images.') }
   }
 
   return (
@@ -452,7 +491,7 @@ function AppV2() {
             <input name="title" placeholder="Case title" aria-label="Case title" required />
             <input name="victimAlias" placeholder="Victim alias (optional)" aria-label="Victim alias" />
             <input name="type" placeholder="Scam type (optional)" aria-label="Scam type" />
-            <button className="primary" type="submit">+ New case</button>
+            <button className="primary" type="submit" disabled={saving}>+ New case</button>
           </form>
 
           <div className="case-list">
@@ -461,7 +500,8 @@ function AppV2() {
               <button
                 key={item.id}
                 className={`case-row ${item.id === store.activeCaseId ? 'active' : ''}`}
-                onClick={() => setStore((current) => ({ ...current, activeCaseId: item.id }))}
+                onClick={() => { if (commitStore((current) => ({ ...current, activeCaseId: item.id }))) { setScanText(''); setScanResult(null); setSaveError('') } }}
+                disabled={saving}
               >
                 <span>{item.title}</span>
                 <small>{item.status} · {item.evidence?.length || 0} {item.evidence?.length === 1 ? 'record' : 'records'}</small>
@@ -470,12 +510,13 @@ function AppV2() {
           </div>
 
           <div className="sidebar-actions">
-            <button onClick={exportWorkspace} disabled={!store.cases.length}>Backup workspace</button>
-            <button className="danger-link" onClick={removeAllLocalData}>Delete all local data</button>
+            <button onClick={exportWorkspace} disabled={!store.cases.length || exporting || saving}>{exporting ? 'Preparing download…' : 'Backup workspace'}</button>
+            <button className="danger-link" onClick={removeAllLocalData} disabled={saving || exporting}>Delete all local data</button>
           </div>
         </aside>
 
         <section className="content">
+          {storageError && <p className="record-save-error" role="alert">{storageError}</p>}
           <nav className="tabs" aria-label="SCAM-A-LAX modules">
             {[
               ['ledger', 'Scam Ledger'],
@@ -527,20 +568,19 @@ function AppV2() {
                     {activeCase.evidence.length === 0 && <p className="callout"><strong>Your case is ready. Add your first record.</strong><br />Choose note for your story, enter it below, then select Save record.</p>}
                     <form className="evidence-form" onSubmit={addEvidence}>
                       <div className="two-col">
-                        <div className="record-field"><label htmlFor="record-kind">Kind</label><select id="record-kind" name="kind" defaultValue="message" aria-describedby="record-kind-help">{evidenceKinds.map((kind) => <option key={kind}>{kind}</option>)}</select><small id="record-kind-help" className="muted">Choose note for your story, or message for text you received.</small></div>
+                        <div className="record-field"><label htmlFor="record-kind">Kind</label><select id="record-kind" name="kind" defaultValue="message" disabled={saving} aria-describedby="record-kind-help">{evidenceKinds.map((kind) => <option key={kind}>{kind}</option>)}</select><small id="record-kind-help" className="muted">Choose note for your story, or message for text you received.</small></div>
                         <label>Evidence state
-                          <select name="state" defaultValue="OBSERVED">{evidenceStates.map((state) => <option key={state}>{state}</option>)}</select>
+                          <select name="state" defaultValue="OBSERVED" disabled={saving}>{evidenceStates.map((state) => <option key={state}>{state}</option>)}</select>
                         </label>
                       </div>
-                      <div className="record-field"><label htmlFor="record-value">Message or what happened</label><textarea id="record-value" name="value" rows="4" placeholder="Paste a message or describe what happened…" aria-describedby="record-value-help" /><small id="record-value-help" className="muted">This text becomes a record only when you select Save record.</small></div>
-                      <label>Original file (optional)
-                        <input ref={fileRef} name="file" type="file" />
-                        <small>The browser hashes the file. SCAM-A-LAX does not upload or store its bytes.</small>
-                      </label>
+                      <div className="record-field"><label htmlFor="record-value">Message or what happened</label><textarea id="record-value" name="value" rows="4" placeholder="Paste a message or describe what happened…" disabled={saving} aria-describedby="record-value-help" /><small id="record-value-help" className="muted">This text becomes a record only when you select Save record.</small></div>
+                      <div className="record-field"><label htmlFor="record-file">Screenshot or original file (optional)</label><input id="record-file" ref={fileRef} name="file" type="file" disabled={saving} aria-describedby="record-file-help" onChange={(event) => { setSelectedFile(event.target.files?.[0] || null); setKeepScreenshot(true); setSaveError('') }} /><small id="record-file-help">PNG, JPG, and WebP screenshots up to 10 MB can be saved and viewed here. Other files keep a receipt only. Nothing is uploaded.</small></div>
+                      {isScreenshotFile(selectedFile) && <><SelectedScreenshot file={selectedFile} /><label className="screenshot-choice"><input type="checkbox" checked={keepScreenshot} disabled={saving} aria-label="Save a viewable copy with this case" aria-describedby="record-image-copy-help" onChange={(event) => setKeepScreenshot(event.target.checked)} /><span>Save a viewable copy with this case<small id="record-image-copy-help">Included in JSON backups. Uncheck to keep only the file receipt.</small></span></label><small className="muted">To check the screenshot’s message, type or paste its words above. Image text is not read automatically.</small></>}
                       <label>Analyst note
-                        <input name="note" placeholder="Why this matters, source context, caveat…" />
+                        <input name="note" disabled={saving} placeholder="Why this matters, source context, caveat…" />
                       </label>
-                      <button className="primary" type="submit">Save record</button>
+                      {saveError && <p className="record-save-error" role="alert">{saveError}</p>}
+                      <button className="primary" type="submit" disabled={saving}>{saving ? 'Saving record…' : 'Save record'}</button>
                     </form>
                   </section>
 
@@ -555,9 +595,12 @@ function AppV2() {
                             <span className="kind">{ev.kind}</span>
                             <time>{new Date(ev.recordedAt).toLocaleString()}</time>
                           </div>
-                          {ev.fileName ? <strong>{ev.fileName}</strong> : <p>{ev.value}</p>}
+                          {ev.fileName && <strong>{ev.fileName}</strong>}
+                          {ev.value && <p>{ev.value}</p>}
+                          {ev.screenshot?.id && <Screenshot record={ev} />}
                           {ev.note && <p className="note">{ev.note}</p>}
                           <code>sha256:{ev.sha256}</code>
+                          {ev.value && <button type="button" onClick={() => { setScanText(ev.value); setScanResult(analyzeMessage(ev.value)); setView('check') }}>Check record text</button>}
                         </article>
                       ))}
                     </div>
@@ -664,21 +707,13 @@ function AppV2() {
                   <span className="kicker">SCAMCHECK</span>
                   <h2>Explainable local message triage</h2>
                   <p className="muted">Paste suspicious text. Rules run entirely in this browser and produce indicators, not a verdict.</p>
-                  <textarea className="scanner" rows="10" aria-label="Case message to check" value={scanText} onChange={(e) => { setScanText(e.target.value); setScanResult(null) }} placeholder="Paste a suspicious message, email body, payment instruction, or call notes…" />
+                  <textarea className="scanner" rows="10" maxLength={20000} aria-label="Case message to check" value={scanText} onChange={(e) => { setScanText(e.target.value); setScanResult(null) }} placeholder="Paste a suspicious message, email body, payment instruction, or call notes…" />
                   <div className="button-row">
                     <button className="primary" onClick={runScamCheck} disabled={!scanText.trim()}>Analyze locally</button>
                     {scanResult && <button onClick={recordScan}>Record as INFERRED</button>}
                   </div>
                   {scanResult && (
-                    <div className={`risk-card risk-${scanResult.level.toLowerCase()}`}>
-                      <div className="risk-score"><strong>{scanResult.score}</strong><span>/100</span></div>
-                      <div>
-                        <span className="kicker">{scanResult.level} INDICATOR LOAD</span>
-                        <h3>{scanResult.findings.length ? `${scanResult.findings.length} configured indicators matched` : 'No configured indicators matched'}</h3>
-                        <div className="chips">{scanResult.findings.map((finding) => <span key={finding.label}>{finding.label}</span>)}</div>
-                        <p>This is a pattern-weight total, not a scam probability. Legitimate messages can match rules, and scams can avoid them. No matches leave safety unverified.</p>
-                      </div>
-                    </div>
+                    <><ScamRadar result={scanResult} /><div className="case-radar-findings">{scanResult.findings.map((finding) => <article key={finding.id}><h3>{finding.label}</h3><p>Matched words: <q>{finding.excerpt}</q></p><p>{finding.why}</p><p><strong>Next step:</strong> {finding.action}</p></article>)}</div></>
                   )}
                 </section>
               )}
@@ -705,7 +740,7 @@ function AppV2() {
                   <section className="panel">
                     <span className="kicker">CASE PACKET v2</span>
                     <h2>Export evidence + derived intelligence</h2>
-                    <p className="muted">Exports identify entity extraction and correlations as non-authoritative derived intelligence. Original file bytes are never included.</p>
+                    <p className="muted">JSON archives include saved screenshots. Markdown reports contain file details and receipts; download original images separately when sharing a text report. Derived intelligence remains non-authoritative.</p>
                     <div className="packet-stats packet-stats-v2">
                       <div><strong>{activeCase.evidence.length}</strong><span>Evidence</span></div>
                       <div><strong>{entities.length}</strong><span>Entities</span></div>
@@ -713,8 +748,8 @@ function AppV2() {
                       <div><strong>{crossCaseMatches.length}</strong><span>Cross-case</span></div>
                     </div>
                     <div className="button-row stack-mobile">
-                      <button className="primary" onClick={() => exportCase('md')}>Download Markdown packet</button>
-                      <button onClick={() => exportCase('json')}>Download JSON archive</button>
+                      <button className="primary" disabled={exporting} onClick={() => exportCase('md')}>Download Markdown packet</button>
+                      <button disabled={exporting} onClick={() => exportCase('json')}>Download JSON archive</button>
                     </div>
                   </section>
                   <section className="panel">
