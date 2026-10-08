@@ -32,6 +32,21 @@
 .ed-hero-note { margin-top: 21px; display: flex; gap: 7px; align-items: center; color: #59636d; font-size: .71rem; }
 .ed-guide-link { display: inline-flex; gap: 8px; align-items: center; margin-top: 16px; padding: 4px 0; border: 0; background: none; color: var(--ed-purple); font-size: .78rem; text-align: left; text-decoration: underline; text-underline-offset: 4px; }
 .ed-guide-link svg { flex-shrink: 0; }
+.ed-number-form label { color: var(--ed-ink); }
+.ed-number-form input { width: 100%; background: #fff; color: var(--ed-ink); font-size: 16px; }
+.ed-number-form .ed-button-row { margin-top: 15px; }
+.ed-number-error { color: #9c2e37; font-size: .85rem; }
+.ed-number-results:focus { outline: 3px solid #7958c9; outline-offset: 4px; }
+.ed-phone-case { margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--ed-border); }
+.ed-phone-case h3 { font-size: 1.1rem; color: var(--ed-ink); }
+.ed-phone-records { list-style: none; padding: 0; }
+.ed-phone-records li { background: #f8f7fb; border: 1px solid #e2ddeb; padding: 13px; border-radius: 10px; margin-bottom: 10px; overflow-wrap: anywhere; }
+.ed-phone-records li > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: .7rem; color: var(--ed-purple); }
+.ed-phone-records p { margin-bottom: 0; font-size: .8rem; }
+.ed-phone-index { list-style: none; padding: 0; margin: 0 0 20px; }
+.ed-phone-index button { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 15px; width: 100%; margin-bottom: 8px; padding: 12px; border: 1px solid var(--ed-border); background: #f8f7fb; color: var(--ed-ink); text-align: left; }
+.ed-phone-index button > span { font-size: .76rem; color: var(--ed-muted); }
+.ed-phone-index button > span:last-child { margin-left: auto; }
 .ed-example { background: #fff; border: 1px solid #ded7eb; border-radius: 19px; padding: 24px; box-shadow: 0 16px 32px #4532570b; transform: rotate(1deg); }
 .ed-example-top { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: .59rem; font-weight: 700; letter-spacing: .1em; color: #58606d; }
 .ed-example-top > span:last-child { letter-spacing: 0; color: #6c6780; font-weight: 500; }

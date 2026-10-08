@@ -2,11 +2,13 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { academyChoices, getSupportSteps, lessons, officialResources, supportOptions } from './academy.js'
 import { analyzeMessage, MESSAGE_LIMIT } from './scamcheck.js'
 import { VERSION } from './version.js'
+import HelpAgent from './HelpAgent.jsx'
 import './edition.css'
 
 const Workstation = lazy(() => import('./AppV3.jsx'))
+const NumberTracker = lazy(() => import('./NumberTracker.jsx'))
 const PROGRESS_KEY = 'scamalax.learning.v1'
-const routes = [['home', 'Overview'], ['guide', 'Start here'], ['check', 'Check a message'], ['help', 'Get help'], ['academy', 'Scam Academy'], ['cases', 'My cases']]
+const routes = [['home', 'Overview'], ['guide', 'Start here'], ['check', 'Check a message'], ['numbers', 'Number tracker'], ['help', 'Get help'], ['academy', 'Scam Academy'], ['cases', 'My cases']]
 
 function readRoute() {
   const route = window.location.hash.slice(1)
@@ -184,10 +186,12 @@ export default function AppEdition() {
       {route === 'home' && <Overview go={go} completed={Object.keys(progress.answers).length} />}
       {route === 'guide' && <StartHere go={go} />}
       {route === 'check' && <MessageCheck go={go} />}
+      {route === 'numbers' && <Suspense fallback={<p className="ed-loading" role="status">Opening your local number tracker…</p>}><NumberTracker go={go} /></Suspense>}
       {route === 'help' && <GetHelp progress={progress} update={setProgress} go={go} />}
       {route === 'academy' && <Academy progress={progress} update={setProgress} />}
       {route === 'cases' && <><div className="ed-workspace-intro"><span className="ed-eyebrow">YOUR EVIDENCE WORKSPACE</span><h1>Keep the details together.</h1><p>A case is your folder. Save the story inside it as a record. Existing cases stay in this browser.</p><details className="ed-case-directions"><summary>How to save your first record</summary><ol aria-label="Quick case directions"><li>Enter a <strong>Case title</strong> and select <strong>+ New case</strong>, or open a case you already made.</li><li>Open <strong>Scam Ledger</strong>. Choose <strong>Kind → note</strong> for your story, or <strong>message</strong> for a message you received.</li><li>Fill in <strong>Message or what happened</strong> and select <strong>Save record</strong>. Check that your words appear in the saved records list.</li><li>Select <strong>Backup workspace</strong> to download a copy of your saved cases.</li></ol></details></div><Suspense fallback={<p className="ed-loading" role="status">Opening your local workspace…</p>}><Workstation /></Suspense></>}
     </main>
     <footer className="ed-footer"><div><strong>SCAM-A-LAX · Larrina’s Edition</strong><span>{VERSION} · Built on Mikey’s open-source foundation.</span></div><p>Local storage is not encrypted. On a shared device, others may be able to read saved cases. Download a backup before clearing browser data.</p><div className="ed-footer-links"><a href="https://consumer.ftc.gov/articles/how-avoid-scam" target="_blank" rel="noopener noreferrer">FTC scam-awareness guide ↗</a><a href="https://github.com/larrinamsalva/SCAM-A-LAX" target="_blank" rel="noopener noreferrer">Source code ↗</a></div></footer>
+    <HelpAgent route={route} go={go} />
   </div>
 }
