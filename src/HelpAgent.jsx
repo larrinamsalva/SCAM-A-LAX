@@ -4,7 +4,7 @@ import './help-agent.css'
 
 const greeting = { id: 0, reply: { title: 'A little help, one step at a time.', text: 'Choose a topic below, or ask a question about using the app.', steps: [], actions: [] } }
 
-export default function HelpAgent({ route, go }) {
+export default function HelpAgent({ route, go, busy = false }) {
   const [open, setOpen] = useState(false)
   const [question, setQuestion] = useState('')
   const [messages, setMessages] = useState([greeting])
@@ -56,10 +56,10 @@ export default function HelpAgent({ route, go }) {
     </button>
     {open && <section id="app-help-agent" className="ed-helper-panel" role="dialog" aria-modal="false" aria-labelledby="app-helper-title" aria-describedby="app-helper-description">
       <header className="ed-helper-header"><div><span className="ed-eyebrow">HERE TO HELP</span><h2 id="app-helper-title" ref={heading} tabIndex={-1}>Your app helper</h2></div><button type="button" className="ed-helper-close" aria-label="Close helper panel" onClick={close}>×</button></header>
-      <p id="app-helper-description" className="ed-helper-description">Built-in app directions. Questions stay in this tab and clear on refresh. Use Save record to keep your story.</p>
+      <p id="app-helper-description" className="ed-helper-description">Built-in app directions. Questions stay in this tab and clear on refresh. Use Save case for a new story, or Save record inside an existing case.</p>
       <ol ref={conversation} className="ed-helper-chat" role="log" aria-label="Helper conversation" aria-live="polite" aria-relevant="additions">
         {messages.map((message) => <li key={message.id} className={message.question ? 'ed-helper-question' : 'ed-helper-answer'}>
-          {message.question ? <><span className="ed-helper-speaker">YOU</span><p>{message.question}</p></> : <><span className="ed-helper-speaker">APP HELPER</span><h3>{message.reply.title}</h3><p>{message.reply.text}</p>{message.reply.steps.length > 0 && <ol>{message.reply.steps.map((step) => <li key={step}>{step}</li>)}</ol>}<div className="ed-helper-actions">{message.reply.actions.map((action) => <button key={action.route} type="button" onClick={() => { setOpen(false); go(action.route) }}>{action.label} <span aria-hidden="true">→</span></button>)}</div></>}
+          {message.question ? <><span className="ed-helper-speaker">YOU</span><p>{message.question}</p></> : <><span className="ed-helper-speaker">APP HELPER</span><h3>{message.reply.title}</h3><p>{message.reply.text}</p>{message.reply.steps.length > 0 && <ol>{message.reply.steps.map((step) => <li key={step}>{step}</li>)}</ol>}<div className="ed-helper-actions">{message.reply.actions.map((action) => <button key={action.route} type="button" disabled={busy} onClick={() => { setOpen(false); go(action.route) }}>{action.label} <span aria-hidden="true">→</span></button>)}</div></>}
         </li>)}
       </ol>
       <div className="ed-helper-topics" aria-label="Quick help topics">{helpQuickTopics.map((topic) => <button key={topic.id} type="button" onClick={() => ask(topic.label, getHelpTopic(topic.id))}>{topic.label}</button>)}<button type="button" onClick={() => ask('Help on this page', getPageHelp(route))}>Help on this page</button></div>

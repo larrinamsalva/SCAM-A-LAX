@@ -10,7 +10,7 @@ test('failed workspace writes leave the persisted case and evidence unchanged', 
 })
 
 test('unreadable workspace data is never replaced by an empty store', () => {
-  for (const raw of ['not-json', '{}', 'null']) {
+  for (const raw of ['not-json', '{}', 'null', '{"cases":[null]}', '{"cases":[{"id":"same"},{"id":"same"}]}', '{"cases":[{"id":"a","evidence":[null]}]}']) {
     let writes = 0
     const storage = { getItem: () => raw, setItem: () => { writes++ } }
     assert.throws(() => readWorkspace(storage))

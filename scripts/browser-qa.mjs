@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
 import { createHash } from 'node:crypto'
 import { academyChoices, lessons } from '../src/academy.js'
+import { verifyGuidedCases } from './guided-case-qa.mjs'
 
 const base = process.env.QA_BASE_URL || 'http://127.0.0.1:4175/SCAM-A-LAX/'
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
@@ -173,6 +174,7 @@ try {
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('scamalax.state.v1')))
     assert.equal(stored.cases[0].evidence[0].state, 'INFERRED')
     assert.equal(stored.cases[0].evidence.find((item) => item.id === 'ev-qa').state, 'OBSERVED')
+    await page.getByText('Advanced: create an empty case folder', { exact: true }).click()
     await page.getByLabel('Case title', { exact: true }).fill('Second synthetic QA case')
     await page.getByRole('button', { name: '+ New case', exact: true }).click()
     await visible(page.getByRole('heading', { name: 'Second synthetic QA case', exact: true }))
@@ -421,6 +423,8 @@ try {
       results.push({ story: failure + ' screenshot flow preserves data or explicitly saves receipt only', status: 'passed' })
     } finally { await context.close() }
   }
+
+  results.push(...await verifyGuidedCases({ browser, base, imageFixture }))
 
   const shortContext = await browser.newContext({ viewport: { width: 844, height: 390 } })
   const shortPage = await shortContext.newPage()
