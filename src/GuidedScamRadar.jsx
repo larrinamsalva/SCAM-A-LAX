@@ -153,6 +153,7 @@ export default function GuidedScamRadar({ go }) {
         <button type="button" className="easy-next" onClick={() => go('help')}>I need help now</button>
         <button type="button" className="easy-small-button" onClick={() => go('cases')}>Save my story in a case</button>
       </div>
+      <p>To keep details from each call or message, open My cases, save or choose a case, then select <strong>Call &amp; message log</strong>. Radar answers are not copied into a record automatically.</p>
       <p className="easy-resource-heading">Trusted information:</p>
       <div className="easy-resource-links">
         <a href="https://consumer.ftc.gov/articles/what-do-if-you-were-scammed" target="_blank" rel="noopener noreferrer">FTC: What to do if you were scammed ↗</a>

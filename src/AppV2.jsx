@@ -8,6 +8,9 @@ import { clearScreenshots, exportScreenshots, isScreenshotFile, prepareScreensho
 import { readWorkspace, writeWorkspace } from './workspace-storage.js'
 import NewCaseForm from './NewCaseForm.jsx'
 import { emptyCaseDraft, findSavedCases, saveStoryCorrection, STORY_LIMIT } from './case-workflow.js'
+import ContactLog from './ContactLog.jsx'
+import { emptyContactDraft, hasContactDraft } from './contact-records.js'
+import { evidenceValueMarkdown } from './intake.js'
 
 const STORAGE_KEY = 'scamalax.state.v1'
 const evidenceStates = ['OBSERVED', 'SUPPORTED', 'CORRELATED', 'INFERRED', 'DISPUTED', 'UNKNOWN']
@@ -116,12 +119,14 @@ function caseToMarkdown(item, entities, crossCaseMatches) {
   item.evidence.forEach((ev, index) => {
     lines.push(`### ${index + 1}. ${ev.kind.toUpperCase()} — ${ev.state}`)
     lines.push(`- **Evidence ID:** ${ev.id}`)
-    lines.push(`- **Recorded:** ${ev.recordedAt}`)
+    lines.push(`- **${ev.contact ? 'Note saved at' : 'Recorded'}:** ${ev.recordedAt}`)
+    if (ev.contact) lines.push(`- **Contact format:** ${ev.contact.schema}`)
+    if (ev.relatedContactId) lines.push(`- **Attachment for contact record:** ${ev.relatedContactId}`)
     if (ev.sourceType === 'USER_STATEMENT') lines.push('- **Source:** User statement, not independently verified')
     if (ev.correctsRecordId) lines.push(`- **Clarifies record:** ${ev.correctsRecordId} (original retained)`)
     lines.push(`- **SHA-256:** \`${ev.sha256}\``)
     if (ev.fileName) lines.push(`- **File:** ${ev.fileName} (${ev.fileSize} bytes, ${ev.fileType || 'unknown type'})`)
-    if (ev.value) lines.push(`- **Value:** ${ev.value}`)
+    if (ev.value) lines.push(...evidenceValueMarkdown(ev, '- **Value:** '))
     if (ev.note) lines.push(`- **Note:** ${ev.note}`)
     lines.push('')
   })
@@ -232,6 +237,7 @@ function AppV2({ caseDraft, onCaseDraftChange, onCaseBusyChange, caseLeaveCheck 
   const [correctionTarget, setCorrectionTarget] = useState(null)
   const [correctionText, setCorrectionText] = useState('')
   const [correctionError, setCorrectionError] = useState('')
+  const [contactDraft, setContactDraft] = useState(emptyContactDraft)
   const draft = caseDraft || emptyCaseDraft(store.cases.length === 0)
   const visibleCases = useMemo(() => findSavedCases(store.cases, { query: caseQuery, status: caseFilter, sort: caseSort }), [store.cases, caseQuery, caseFilter, caseSort])
 
@@ -240,7 +246,7 @@ function AppV2({ caseDraft, onCaseDraftChange, onCaseBusyChange, caseLeaveCheck 
     const values = new FormData(recordForm.current)
     return Boolean(String(values.get('value') || '').trim() || String(values.get('note') || '').trim() || fileRef.current?.files?.length)
   }
-  const confirmCaseChange = () => !savingRef.current && (!(correctionText.trim() || hasRecordDraft()) || window.confirm('Discard the unsaved record or clarification before leaving this case? Your saved records will stay unchanged.'))
+  const confirmCaseChange = () => !savingRef.current && (!(correctionText.trim() || hasRecordDraft() || hasContactDraft(contactDraft)) || window.confirm('Discard the unsaved record, contact note, or clarification before leaving this case? Your saved records will stay unchanged.'))
   const clearRecordDraft = () => {
     recordForm.current?.reset()
     if (fileRef.current) fileRef.current.value = ''
@@ -249,13 +255,14 @@ function AppV2({ caseDraft, onCaseDraftChange, onCaseBusyChange, caseLeaveCheck 
     setCorrectionTarget(null)
     setCorrectionText('')
     setCorrectionError('')
+    setContactDraft(emptyContactDraft())
   }
   useEffect(() => {
     caseLeaveCheck.current = confirmCaseChange
-    const warnBeforeLeaving = (event) => { if (correctionText.trim() || hasRecordDraft() || savingRef.current) { event.preventDefault(); event.returnValue = '' } }
+    const warnBeforeLeaving = (event) => { if (correctionText.trim() || hasRecordDraft() || hasContactDraft(contactDraft) || savingRef.current) { event.preventDefault(); event.returnValue = '' } }
     window.addEventListener('beforeunload', warnBeforeLeaving)
     return () => { caseLeaveCheck.current = null; window.removeEventListener('beforeunload', warnBeforeLeaving) }
-  }, [correctionText, caseLeaveCheck])
+  }, [correctionText, contactDraft, caseLeaveCheck])
 
   const activeCase = useMemo(
     () => store.cases.find((item) => item.id === store.activeCaseId) || null,
@@ -600,6 +607,7 @@ function AppV2({ caseDraft, onCaseDraftChange, onCaseBusyChange, caseLeaveCheck 
           <nav className="tabs" aria-label="SCAM-A-LAX modules">
             {[
               ['ledger', 'Scam Ledger'],
+              ['contacts', 'Call & message log'],
               ['intelligence', 'Intelligence Graph'],
               ['check', 'ScamCheck'],
               ['rescue', 'Victim Rescue'],
@@ -680,7 +688,7 @@ function AppV2({ caseDraft, onCaseDraftChange, onCaseBusyChange, caseLeaveCheck 
                           {ev.fileName && <strong>{ev.fileName}</strong>}
                           {ev.sourceType === 'USER_STATEMENT' && <p className="case-source-label">User statement · not independently verified</p>}
                           {ev.correctsRecordId && <p className="case-source-label">Clarifies record {ev.correctsRecordId}. Original retained.</p>}
-                          {ev.value && <p>{ev.value}</p>}
+                          {ev.value && <p className={ev.contact ? 'contact-record-text' : undefined}>{ev.value}</p>}
                           {ev.screenshot?.id && <Screenshot record={ev} />}
                           {ev.note && <p className="note">{ev.note}</p>}
                           <code>sha256:{ev.sha256}</code>
@@ -693,6 +701,11 @@ function AppV2({ caseDraft, onCaseDraftChange, onCaseBusyChange, caseLeaveCheck 
                   </section>
                 </div>
               )}
+
+              {view === 'contacts' && <ContactLog key={activeCase.id} item={activeCase} draft={contactDraft} onChange={(next) => setContactDraft(next || emptyContactDraft())} saving={saving}
+                onBusyChange={(busy) => { savingRef.current = busy; setSaving(busy); onCaseBusyChange(busy) }}
+                onSaved={({ store: next }) => { setStore({ ...next, cases: next.cases.map(normalizeCase) }); setStorageError(''); setContactDraft(emptyContactDraft()) }}
+                onOpenPacket={() => { if (!confirmCaseChange()) return; clearRecordDraft(); setView('packet') }} />}
 
               {view === 'intelligence' && (
                 <div className="intel-stack">

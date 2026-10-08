@@ -44,3 +44,24 @@ test('unsupported answers and unknown IDs do not raise score', () => {
   assert.equal(result.answered, 1)
   assert.equal(result.warnings[0].id, 'refund-overpay')
 })
+
+test('phone-pressure answers cover callback context and progress across all warning bands', () => {
+  assert.equal(GUIDED_QUESTIONS.length, 24)
+  const low = { 'quick-callback': 'yes' }
+  const elevated = { ...low, 'stay-on-line': 'yes' }
+  const high = { ...elevated, 'bank-cover': 'yes' }
+  const critical = { ...high, 'block-verification': 'yes' }
+  for (const [answers, score, level] of [[low, 6, 'LOW'], [elevated, 22, 'ELEVATED'], [high, 46, 'HIGH'], [critical, 70, 'CRITICAL']]) {
+    assert.equal(scoreGuidedAnswers(answers).score, score)
+    assert.equal(scoreGuidedAnswers(answers).level, level)
+  }
+  assert.match(GUIDED_QUESTIONS.find((q) => q.id === 'quick-callback').reason, /alone can be ordinary/)
+  assert.match(GUIDED_QUESTIONS.find((q) => q.id === 'stay-on-line').hint, /register/)
+})
+
+test('language, accent, nationality, and contact-log fields never contribute warning points', () => {
+  const result = scoreGuidedAnswers({ language: 'Hindi', accent: 'Indian', nationality: 'India', keptOnPhone: 'yes', quickCallback: 'yes' })
+  assert.equal(result.score, 0)
+  assert.equal(result.answered, 0)
+  assert.equal(result.level, 'UNKNOWN')
+})

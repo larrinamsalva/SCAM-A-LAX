@@ -1,0 +1,23 @@
+.contact-log { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.contact-log-form form, .contact-log-form fieldset { display: grid; gap: 14px; }
+.contact-log-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.contact-log-form .record-field { display: grid; gap: 7px; min-width: 0; }
+.contact-log-form .record-field label { color: #d3e7f3; font-weight: 750; }
+.contact-log-form small { display: block; color: #b9d1df; line-height: 1.55; }
+.contact-directions { padding-left: 24px; color: #c8e2ef; line-height: 1.6; }
+.contact-directions li { margin-bottom: 7px; }
+.contact-optional { border: 1px solid #b8c9dd; border-radius: 9px; padding: 14px; }
+.contact-optional summary { cursor: pointer; font-weight: 750; color: #d3e7f3; }
+.contact-optional .record-field { margin-top: 14px; }
+.contact-record-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 14px 0; font: inherit; line-height: 1.65; color: #dceaf2; background: #0b2330; padding: 16px; border-radius: 8px; }
+.contact-save-boundary { color: #243e5f; background: #e8f1fc; padding: 14px; border-radius: 8px; line-height: 1.6; }
+.contact-saved-record h3 { margin-top: 0; font-size: 18px; line-height: 1.4; }
+.contact-saved-record small, .contact-saved-record code { display: block; overflow-wrap: anywhere; margin-top: 9px; }
+.contact-attachment { border-top: 1px solid #c7d4e4; margin-top: 16px; padding-top: 16px; }
+.contact-log .button-row { flex-wrap: wrap; }
+@media (max-width: 980px) { .contact-log { grid-template-columns: 1fr; } }
+@media (max-width: 680px) {
+  .contact-log-form .two-col { grid-template-columns: 1fr; }
+  .contact-log .panel { padding: 18px; }
+  .contact-log input, .contact-log select, .contact-log textarea { min-width: 0; width: 100%; }
+}

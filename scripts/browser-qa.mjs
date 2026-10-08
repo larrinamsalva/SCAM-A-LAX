@@ -6,6 +6,7 @@ import { chromium } from 'playwright'
 import { createHash } from 'node:crypto'
 import { academyChoices, lessons } from '../src/academy.js'
 import { verifyGuidedCases } from './guided-case-qa.mjs'
+import { verifyContactLog } from './contact-log-qa.mjs'
 
 const base = process.env.QA_BASE_URL || 'http://127.0.0.1:4175/SCAM-A-LAX/'
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
@@ -493,6 +494,7 @@ try {
   }
 
   results.push(...await verifyGuidedCases({ browser, base, imageFixture }))
+  results.push(...await verifyContactLog({ browser, base, imageFixture }))
 
   const shortContext = await browser.newContext({ viewport: { width: 844, height: 390 } })
   const shortPage = await shortContext.newPage()

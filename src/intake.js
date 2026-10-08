@@ -263,6 +263,16 @@ export function buildHandoffPacket({ item, profile = 'law', entities = [], cross
   }
 }
 
+export function evidenceValueMarkdown(record, prefix = '- Value: ') {
+  if (!record.contact) return [prefix + record.value]
+  // User-entered contact text stays literal in rendered Markdown, including
+  // suspicious URLs and markup. A longer fence also contains pasted fences.
+  const value = String(record.value || '')
+  const runs = value.match(/~+/g) || []
+  const fence = '~'.repeat(Math.max(3, ...runs.map((run) => run.length + 1)))
+  return ['- User-entered contact text:', '', fence + 'text', value, fence, '']
+}
+
 export function handoffToMarkdown(packet) {
   const lines = [
     '# SCAM-A-LAX Handoff Packet',
@@ -291,12 +301,14 @@ export function handoffToMarkdown(packet) {
   packet.evidence.forEach((record, index) => {
     lines.push(`### ${index + 1}. ${String(record.kind || 'evidence').toUpperCase()} — ${record.state || 'UNKNOWN'}`)
     lines.push(`- Evidence ID: ${record.id}`)
-    lines.push(`- Recorded: ${record.recordedAt}`)
+    lines.push(`- ${record.contact ? 'Note saved at' : 'Recorded'}: ${record.recordedAt}`)
+    if (record.contact) lines.push(`- Contact format: ${record.contact.schema}`)
+    if (record.relatedContactId) lines.push(`- Attachment for contact record: ${record.relatedContactId}`)
     if (record.sourceType === 'USER_STATEMENT') lines.push('- Source: User statement, not independently verified')
     if (record.correctsRecordId) lines.push(`- Clarifies record: ${record.correctsRecordId} (original retained)`)
     if (record.sha256) lines.push(`- SHA-256: \`${record.sha256}\``)
     if (record.fileName) lines.push(`- File: ${record.fileName} (${record.fileSize || 0} bytes)`)
-    if (record.value) lines.push(`- Value: ${record.value}`)
+    if (record.value) lines.push(...evidenceValueMarkdown(record))
     if (record.note) lines.push(`- Note: ${record.note}`)
     lines.push('')
   })
