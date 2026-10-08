@@ -8,14 +8,17 @@ SCAM-A-LAX is a free, open-source, local-first toolkit for organizing scam repor
 
 Current build: **v0.7.0-alpha — Larrina’s Edition**
 
-This fork adds a people-first front door to Mikey’s local evidence workstation. Begin with **Check a message**, **Get help**, or **Scam Academy**; use **My cases** when you want to preserve and export a record. Existing `scamalax.state.v1` case data and evidence semantics are retained.
+This fork adds a people-first front door to Mikey’s local evidence workstation. Begin with **Easy Scam Radar**, **Check a message**, **Get help**, or **Scam Academy**; use **My cases** when you want to preserve and export a record. Existing `scamalax.state.v1` case data and evidence semantics are retained.
 
 ![Larrina’s Edition overview with message checks, response steps, local cases, and Scam Academy](docs/larrinas-edition-overview.png)
 
 ### New in this edition
 
 - **Easy Scam Radar**: a one-question-at-a-time, large-button warning checklist designed to be approachable for older adults and people helping relatives. Sixteen plain-language questions cover gift-card cashier cover stories, refund overpayments, government/sheriff impersonation, military and charity pressure, family emergencies, remote access, banking codes, secrecy, and job fees. YES adds a transparent number of warning points, NO and NOT SURE add none; changing an answer adjusts the color-coded needle instantly. At zero warnings the result remains **Unknown · safety unverified**, not safe. The 100-point cap is an explainable warning index, **not a scam probability**. Answers stay in page memory, disappear on refresh, and never enter case evidence or any remote service. This is a separate path from existing message screening.
-
+- **Save a new case** guides you through your story, optional incident date/approximate USD loss, optional contact details/attachment, and a review before **Save case**. The case and its first records enter the workspace together, with a lasting saved confirmation and unique ID. A name is optional. The advanced empty-folder action separately explains that it has not saved a story.
+- **Find a saved case** searches story words, case names/IDs, record IDs, contact details, and filenames. Filter by status or sort by age/name. A filtered empty list explains that saved cases are unchanged and offers clear filters.
+- **Clarifications retain history**: add a correction as a new user statement linked to the original record. Original text, hashes, screenshots, and evidence states stay intact. User statements and incident context are labeled in case reports and handoffs.
+- **Draft protection**: guided drafts and selected files stay in tab memory across app navigation and helper use; refresh/close warns before losing them. Leaving an unsaved ledger record, clarification, or intake asks before discarding it. Advanced intake now reads the latest workspace, preserves newer records/cases, and retains its preview/files on save failure.
 - **App helper** opens from any page with topic buttons and short questions about saving stories, finding records, backups, reports, file receipts, message checks, and Academy practice. It uses built-in directions, not a remote AI service; no account or API key is needed. Chat stays in tab memory, never becomes case evidence, and clears on refresh. Opening and closing it preserves unsaved forms. Navigation happens only when the user selects a destination button.
 - **Number tracker** looks up phone numbers across saved local case records, lists numbers already mentioned, and shows the matching cases and source records with their original evidence labels. It uses the existing conservative phone matching: country-coded and unqualified local formats remain separate. Searching sends no number outside the app and does not modify evidence. No local match is not a safety verdict; public scam databases and caller location are not searched. Select **Open this case** to choose a matching case for review.
 - **Saved screenshots**: choose a PNG, JPG, or WebP image up to 10 MB in Scam Ledger and leave **Save a viewable copy with this case** checked. Save record preserves the original image in local IndexedDB, keeps its SHA-256 receipt, and retains the description entered alongside it. Open, enlarge, or download it from the record. Case/workspace JSON exports and JSON handoffs include referenced images as `attachments`; Markdown includes their manifest and receipts. Receipt-only files remain metadata only. Nothing is uploaded. Clearing local case data also clears stored screenshots; browser storage is not encrypted and can be cleared by the browser. Keep originals and a backup.
@@ -128,6 +131,8 @@ The repository includes GitHub Actions workflows for tests/build validation and 
 In **Settings → Pages → Build and deployment → Source**, choose **GitHub Actions**. The existing workflow publishes compiled `dist`; branch/Jekyll publishing can overwrite it with unbuilt source. Confirm the setting before a production merge. Feature branches do not deploy production.
 
 See the [upgrade audit, validation and real desktop/phone screenshots](docs/UPGRADE_AUDIT.md) and [guided-case release notes](docs/RELEASE_NOTES_guided-cases.md). The guided regression suite is included in the existing browser command and CI, covering review edits, retained draft files, duplicate submits, save/reload/search, filters/sorting, clarifications, exports, storage rollback/retry, newer intake records, and deleted targets.
+
+See the [Easy Scam Radar integration notes and focused checks](docs/RELEASE_NOTES_easy-radar.md) for question scoring, temporary answers, visible desktop/phone meters and compatibility with case drafts.
 
 ## Safety boundary
 

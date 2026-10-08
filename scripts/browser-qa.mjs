@@ -19,6 +19,21 @@ async function visible(locator) {
   await locator.waitFor({ state: 'visible' })
 }
 
+async function verifyNeedlePivot(needle) {
+  await needle.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+  const distance = await needle.evaluate((element) => {
+    const svg = element.ownerSVGElement
+    const circle = svg.querySelector('circle')
+    const point = svg.createSVGPoint()
+    point.x = circle.cx.baseVal.value
+    point.y = circle.cy.baseVal.value
+    const needlePoint = point.matrixTransform(element.getCTM())
+    const pivot = point.matrixTransform(circle.getCTM())
+    return Math.hypot(needlePoint.x - pivot.x, needlePoint.y - pivot.y)
+  })
+  assert.ok(distance < 1, 'The radar needle rotated away from its pivot')
+}
+
 async function settle(page) {
   await page.evaluate(() => window.scrollTo(0, 0))
   await page.waitForTimeout(50)
@@ -83,24 +98,57 @@ try {
     await visible(page.getByRole('heading', { name: 'Synthetic QA case', exact: true }))
 
     // The guided warning meter responds immediately without altering case evidence.
+    const beforeEasyRadar = await page.evaluate(() => ({ ...localStorage }))
     await page.getByRole('button', { name: 'Easy Scam Radar', exact: true }).click()
     await visible(page.getByRole('heading', { name: "Let's check what happened.", exact: true }))
     await visible(page.getByRole('status', { name: 'Unknown — safety unverified', exact: true }))
+    const needle = page.locator('.easy-gauge .easy-needle')
+    const initialNeedle = await needle.getAttribute('transform')
     await page.getByRole('button', { name: /YES This happened/ }).click()
     assert.equal(await page.getByRole('meter', { name: 'Scam warning strength' }).getAttribute('aria-valuenow'), '28')
+    assert.notEqual(await needle.getAttribute('transform'), initialNeedle, 'The radar needle did not move')
+    await verifyNeedlePivot(needle)
     await page.getByRole('button', { name: 'Next question →' }).click()
+    await page.waitForFunction(() => document.activeElement?.id === 'easy-question-title')
     await page.getByRole('button', { name: /YES This happened/ }).click()
     assert.equal(await page.getByRole('meter', { name: 'Scam warning strength' }).getAttribute('aria-valuenow'), '54')
     await page.getByRole('button', { name: /YES This happened/ }).click()
     assert.equal(await page.getByRole('meter', { name: 'Scam warning strength' }).getAttribute('aria-valuenow'), '28')
     await page.getByRole('button', { name: /NOT SURE I am not sure/ }).click()
     assert.equal(await page.getByRole('meter', { name: 'Scam warning strength' }).getAttribute('aria-valuenow'), '28')
+    await page.getByRole('button', { name: /YES This happened/ }).click()
+    await page.getByRole('button', { name: 'Next question →' }).click()
+    await page.getByRole('button', { name: /YES This happened/ }).click()
+    assert.equal(await page.getByRole('meter', { name: 'Scam warning strength' }).getAttribute('aria-valuenow'), '80')
+    assert.match(await page.getByRole('meter', { name: 'Scam warning strength' }).getAttribute('aria-valuetext'), /Very high concern/)
     assert.deepEqual((await page.evaluate(() => JSON.parse(localStorage.getItem('scamalax.state.v1')))).cases[0], legacyCase)
+    assert.deepEqual(await page.evaluate(() => ({ ...localStorage })), beforeEasyRadar, 'Radar answers changed saved case or learning data')
+    await verifyNeedlePivot(needle)
+    if (name === 'mobile') {
+      const compactMeter = page.locator('.easy-mobile-meter')
+      const box = await compactMeter.boundingBox()
+      assert.ok(box && box.y >= 0 && box.y + box.height <= viewport.height, 'The phone meter disappeared while answering')
+      await verifyNeedlePivot(compactMeter.locator('.easy-needle'))
+    } else {
+      const box = await page.locator('.easy-gauge').boundingBox()
+      assert.ok(box && box.y >= 0 && box.y + box.height <= viewport.height, 'The desktop gauge disappeared while answering')
+    }
+    await page.screenshot({ path: `test-results/${name}-easy-radar-answering.png` })
     await settle(page)
     await page.screenshot({ path: 'test-results/' + name + '-easy-radar.png', fullPage: true })
+    await page.getByRole('button', { name: 'Start over and clear answers', exact: true }).click()
+    await visible(page.getByRole('status', { name: 'Unknown — safety unverified', exact: true }))
+    for (let question = 0; question < 3; question++) await page.getByRole('button', { name: 'Next question →' }).click()
+    await page.getByRole('button', { name: /YES This happened/ }).click()
+    assert.equal(await page.getByRole('meter', { name: 'Scam warning strength' }).getAttribute('aria-valuenow'), '8')
+    assert.match(await page.getByRole('meter', { name: 'Scam warning strength' }).getAttribute('aria-valuetext'), /Low concern/)
+    await page.getByRole('button', { name: /NO This did not happen/ }).click()
+    await visible(page.getByRole('status', { name: 'Unknown — safety unverified', exact: true }))
+    await page.getByRole('button', { name: /YES This happened/ }).click()
     await page.reload()
     await visible(page.getByRole('status', { name: 'Unknown — safety unverified', exact: true }))
     assert.equal(await page.getByRole('meter', { name: 'Scam warning strength' }).count(), 0, 'Guided answers were kept after reload')
+    assert.equal(await page.evaluate(() => localStorage.getItem('scamalax.state.v1')), beforeEasyRadar['scamalax.state.v1'])
 
     await page.getByRole('button', { name: 'Check a message', exact: true }).first().click()
     await page.getByLabel('Message, email, or call notes').fill('Buy gift cards right now. Don’t tell anyone. https://example.invalid/secret')

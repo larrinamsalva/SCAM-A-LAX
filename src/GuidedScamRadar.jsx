@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { GUIDED_QUESTIONS, scoreGuidedAnswers } from './guided-radar.js'
 import './guided-radar.css'
 
@@ -19,6 +19,16 @@ function arc(from, to) {
   return 'M ' + start.join(' ') + ' A 116 116 0 0 1 ' + end.join(' ')
 }
 
+function Gauge({ score, color }) {
+  return <svg viewBox="0 0 300 168" aria-hidden="true">
+    {BANDS.map((band) => <path key={band.min} d={arc(band.min, band.max)} fill="none" stroke={band.color} strokeWidth="19" strokeLinecap="butt" />)}
+    <g transform="translate(150 135)">
+      <path d="M 0 -2 L -4 -88 Q 0 -100 4 -88 Z" fill={color} transform={'rotate(' + (score * 1.8 - 90) + ')'} className="easy-needle" />
+      <circle cx="0" cy="0" r="10" fill={color} />
+    </g>
+  </svg>
+}
+
 function displayMessage(result) {
   if (!result.warnings.length) return 'No warning signs selected yet. That does not mean this situation is safe.'
   if (result.score >= 70) return 'Several serious warning signs were selected. Stop before sending money, codes, or information. Check with a trusted person or institution.'
@@ -29,6 +39,7 @@ function displayMessage(result) {
 export default function GuidedScamRadar({ go }) {
   const [answers, setAnswers] = useState({})
   const [index, setIndex] = useState(0)
+  const questionRef = useRef(null)
   const question = GUIDED_QUESTIONS[index]
   const answer = answers[question.id]
   const result = scoreGuidedAnswers(answers)
@@ -43,9 +54,17 @@ export default function GuidedScamRadar({ go }) {
     })
   }
 
+  const moveQuestion = (next) => {
+    setIndex(next)
+    requestAnimationFrame(() => {
+      questionRef.current?.focus({ preventScroll: true })
+      questionRef.current?.scrollIntoView({ behavior: 'instant', block: 'start' })
+    })
+  }
+
   const restart = () => {
     setAnswers({})
-    setIndex(0)
+    moveQuestion(0)
   }
 
   return <div className="ed-narrow easy-radar-page">
@@ -55,11 +74,15 @@ export default function GuidedScamRadar({ go }) {
       <p>Answer one simple question at a time. Watch the needle move when you select a warning sign. You can do this for yourself or help someone you care about.</p>
     </div>
     <div className="easy-layout">
+      <div className="easy-mobile-meter" aria-hidden="true">
+        <Gauge score={result.score} color={chosenColor} />
+        <div className="easy-mini-status"><span>Scam Radar</span><strong style={{ color: chosenColor }}>{result.label}</strong><span>{result.score ? result.score + ' / 100 warning points' : 'No warning points selected'}</span></div>
+      </div>
       <section className="easy-card easy-questions" aria-labelledby="easy-question-title">
         <div className="easy-step"><span>Question {index + 1} of {GUIDED_QUESTIONS.length}</span><span>{result.answered} answered</span></div>
         <progress value={result.answered} max={GUIDED_QUESTIONS.length} aria-label="Questions answered" />
         <p className="easy-topic">{question.topic}</p>
-        <h2 id="easy-question-title">{question.question}</h2>
+        <h2 id="easy-question-title" ref={questionRef} tabIndex={-1}>{question.question}</h2>
         <p className="easy-hint">{question.hint}</p>
         <div className="easy-responses" role="group" aria-label="Choose your answer">
           {[
@@ -87,10 +110,10 @@ export default function GuidedScamRadar({ go }) {
           <p>No points added. It's still worth checking with someone you trust.</p>
         </div>}
         <div className="easy-controls">
-          <button type="button" className="easy-small-button" disabled={index === 0} onClick={() => setIndex((i) => Math.max(0, i - 1))}>← Previous</button>
+          <button type="button" className="easy-small-button" disabled={index === 0} onClick={() => moveQuestion(Math.max(0, index - 1))}>← Previous</button>
           <button type="button" className="easy-next" onClick={() => {
-            if (index < GUIDED_QUESTIONS.length - 1) setIndex((i) => i + 1)
-            else document.getElementById('easy-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            if (index < GUIDED_QUESTIONS.length - 1) moveQuestion(index + 1)
+            else document.getElementById('easy-summary')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' })
           }}>{index === GUIDED_QUESTIONS.length - 1 ? 'Review answers ↓' : 'Next question →'}</button>
         </div>
         <button type="button" className="easy-reset" onClick={restart}>Start over and clear answers</button>
@@ -108,11 +131,7 @@ export default function GuidedScamRadar({ go }) {
           aria-valuenow={result.score || undefined}
           aria-valuetext={result.score ? result.label + ', ' + result.score + ' of 100 warning points' : undefined}
         >
-          <svg viewBox="0 0 300 168" aria-hidden="true">
-            {BANDS.map((band) => <path key={band.min} d={arc(band.min, band.max)} fill="none" stroke={band.color} strokeWidth="19" strokeLinecap="butt" />)}
-            <path d="M 150 133 L 146 47 Q 150 35 154 47 Z" fill={chosenColor} transform={'rotate(' + (result.score === 0 ? -90 : result.score * 1.8 - 90) + ' 150 135)'} className="easy-needle" />
-            <circle cx="150" cy="135" r="10" fill={chosenColor} />
-          </svg>
+          <Gauge score={result.score} color={chosenColor} />
           <div className="easy-ends" aria-hidden="true"><span>Lower</span><span>Higher</span></div>
         </div>
         <div className="easy-meter-status" aria-live="polite" aria-atomic="true">
@@ -120,7 +139,7 @@ export default function GuidedScamRadar({ go }) {
           <span>{result.score ? result.score + ' / 100 warning points' : 'No warning points selected'}</span>
         </div>
         <p className="easy-meter-advice">{displayMessage(result)}</p>
-        <p className="easy-caution"><strong>Important:</strong> This is a count of selected warning signs, not a percentage chance of a scam. Even one serious request could be dangerous. Saying NO does not prove safety.</p>
+        <p className="easy-caution"><strong>Important:</strong> These are configured points for the warning signs you select, capped at 100, not a percentage chance of a scam. Even one serious request could be dangerous. Saying NO does not prove safety.</p>
         <p className="easy-private">Your answers stay on this page. They are not saved, sent online, or added to your cases.</p>
       </aside>
     </div>
