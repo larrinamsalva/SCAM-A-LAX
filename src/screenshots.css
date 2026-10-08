@@ -1,0 +1,17 @@
+.screenshot-selected { display: block; width: 100%; max-height: 210px; object-fit: contain; border: 1px solid #35556a; border-radius: 10px; background: #0b1821; }
+.screenshot-choice { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid #35556a; border-radius: 10px; }
+.screenshot-choice input { width: 20px; height: 20px; margin-top: 3px; flex-shrink: 0; accent-color: #66ddc0; }
+.screenshot-choice small { display: block; margin-top: 5px; }
+.saved-screenshot { margin-top: 14px; }
+.screenshot-thumbnail { display: block; width: 100%; padding: 0; max-height: 240px; overflow: hidden; background: #0b1821; border: 1px solid #35556a; border-radius: 10px; }
+.screenshot-thumbnail img { display: block; width: 100%; max-height: 235px; object-fit: contain; }
+.saved-screenshot .button-row { margin-top: 10px; }
+.edition-shell .screenshot-download { display: inline-flex; align-items: center; min-height: 44px; color: #b6f5e5; font-size: .8rem; padding: 9px 0; }
+.screenshot-dialog { border: 1px solid #416476; padding: 0; border-radius: 15px; width: min(950px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); color: #eaf8ff; background: #0a1822; }
+.screenshot-dialog::backdrop { background: #071018cc; }
+.screenshot-dialog-body { padding: 18px; }
+.screenshot-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.screenshot-dialog h2 { font-size: 1rem; overflow-wrap: anywhere; margin: 0; }
+.screenshot-dialog header button { min-width: 44px; min-height: 44px; font-size: 1.6rem; flex-shrink: 0; }
+.screenshot-dialog img { display: block; width: 100%; max-height: calc(100dvh - 175px); object-fit: contain; margin-top: 16px; }
+.record-save-error { padding: 12px 16px; border: 1px solid #b66864; color: #ffddd9; background: #361d24; border-radius: 10px; }

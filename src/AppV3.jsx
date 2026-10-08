@@ -3,6 +3,7 @@ import AppV2 from './AppV2.jsx'
 import { extractEntitiesFromEvidence, getCrossCaseMatches } from './intelligence.js'
 import { buildHandoffPacket, buildIntakePreview, HANDOFF_PROFILES, handoffToMarkdown } from './intake.js'
 import { VERSION } from './version.js'
+import { exportScreenshots } from './screenshots.js'
 
 const STORAGE_KEY = 'scamalax.state.v1'
 const MAX_FILE_BYTES = 25 * 1024 * 1024
@@ -60,6 +61,7 @@ function EvidenceIntake({ onBack }) {
   const [files, setFiles] = useState([])
   const [notice, setNotice] = useState('')
   const [profile, setProfile] = useState('victim')
+  const [exporting, setExporting] = useState(false)
   const fileInput = useRef(null)
 
   const activeCase = useMemo(() => store.cases.find((item) => item.id === caseId) || null, [store, caseId])
@@ -225,14 +227,19 @@ function EvidenceIntake({ onBack }) {
     setNotice(`${added.length} evidence record${added.length === 1 ? '' : 's'} committed. Original file bytes were not stored.`)
   }
 
-  const exportHandoff = (format) => {
-    if (!handoffPacket || !activeCase) return
-    const base = `${safeName(activeCase.title)}-${profile}-handoff`
-    if (format === 'json') {
-      download(`${base}.json`, JSON.stringify(handoffPacket, null, 2), 'application/json')
-    } else {
-      download(`${base}.md`, handoffToMarkdown(handoffPacket), 'text/markdown')
-    }
+  const exportHandoff = async (format) => {
+    if (!handoffPacket || !activeCase || exporting) return
+    setExporting(true)
+    try {
+      const base = `${safeName(activeCase.title)}-${profile}-handoff`
+      if (format === 'json') {
+        const attachments = await exportScreenshots([{ evidence: handoffPacket.evidence }])
+        download(`${base}.json`, JSON.stringify(attachments.length ? { ...handoffPacket, attachments } : handoffPacket, null, 2), 'application/json')
+      } else {
+        download(`${base}.md`, handoffToMarkdown(handoffPacket), 'text/markdown')
+      }
+    } catch { setNotice('The handoff could not include a saved screenshot. Your records are unchanged. Keep or download the original image separately.') }
+    finally { setExporting(false) }
   }
 
   return (
@@ -250,7 +257,7 @@ function EvidenceIntake({ onBack }) {
       </header>
 
       <div className="intake-boundary">
-        <strong>Local-first:</strong> pasted text and selected files are processed in this browser. File bytes are hashed for receipts and are not stored in SCAM-A-LAX.
+        <strong>Local-first:</strong> this intake keeps file details and hash receipts. To keep a viewable screenshot, use Scam Ledger. Pasted text and selected files stay in this browser.
       </div>
 
       <main className="intake-layout">
@@ -291,7 +298,7 @@ function EvidenceIntake({ onBack }) {
           <div className="file-stage">
             <div>
               <strong>Files / screenshots</strong>
-              <p>Up to {MAX_FILES} files, 25 MB each. Images are hashed as evidence; image text is not read or interpreted.</p>
+              <p>Up to {MAX_FILES} files, 25 MB each. This intake keeps file receipts only. To save a viewable screenshot, use the record form in Scam Ledger. Image text is not read automatically.</p>
             </div>
             <input ref={fileInput} type="file" multiple onChange={handleFiles} />
           </div>
@@ -389,8 +396,8 @@ function EvidenceIntake({ onBack }) {
               </div>
               <div className="handoff-caveat">{handoffPacket.caveat}</div>
               <div className="button-row">
-                <button className="primary" onClick={() => exportHandoff('md')}>Download Markdown handoff</button>
-                <button onClick={() => exportHandoff('json')}>Download JSON handoff</button>
+                <button className="primary" disabled={exporting} onClick={() => exportHandoff('md')}>Download Markdown handoff</button>
+                <button disabled={exporting} onClick={() => exportHandoff('json')}>Download JSON handoff</button>
               </div>
             </>
           ) : <p className="muted empty">Choose a case to build a handoff preview.</p>}
