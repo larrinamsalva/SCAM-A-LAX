@@ -18,11 +18,13 @@ test('an empty case or missing record gets checking steps, not a claim that a re
   }
 })
 
-test('saving directions require an explicit record save and checking the list', () => {
+test('saving directions explain the guided save and explicit records inside existing cases', () => {
   for (const question of ['Save my story', 'How do I add a note?', 'Create a case folder']) {
     const reply = answerHelpQuestion(question)
     assert.equal(reply.id, 'save')
     assert.match(reply.text, /does not add your story/)
+    assert.match(reply.steps.join(' '), /Save a new case.*What happened/)
+    assert.match(reply.steps.join(' '), /Review case.*Save case.*saved confirmation/)
     assert.match(reply.steps.join(' '), /Message or what happened/)
     assert.match(reply.steps.at(-1), /Save record.*count increases/)
   }

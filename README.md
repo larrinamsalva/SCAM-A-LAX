@@ -20,7 +20,7 @@ This fork adds a people-first front door to Mikey’s local evidence workstation
 - **Number tracker** looks up phone numbers across saved local case records, lists numbers already mentioned, and shows the matching cases and source records with their original evidence labels. It uses the existing conservative phone matching: country-coded and unqualified local formats remain separate. Searching sends no number outside the app and does not modify evidence. No local match is not a safety verdict; public scam databases and caller location are not searched. Select **Open this case** to choose a matching case for review.
 - **Saved screenshots**: choose a PNG, JPG, or WebP image up to 10 MB in Scam Ledger and leave **Save a viewable copy with this case** checked. Save record preserves the original image in local IndexedDB, keeps its SHA-256 receipt, and retains the description entered alongside it. Open, enlarge, or download it from the record. Case/workspace JSON exports and JSON handoffs include referenced images as `attachments`; Markdown includes their manifest and receipts. Receipt-only files remain metadata only. Nothing is uploaded. Clearing local case data also clears stored screenshots; browser storage is not encrypted and can be cleared by the browser. Keep originals and a backup.
 - **Scam radar**: the same local message rules drive an accessible four-band gauge in Check a message and case-based ScamCheck: Low concern (1–19), Caution (20–44), High concern (45–69), Very high concern (70–100). Points measure configured warning strength, not a probability, verified identity, or amount of harm. No matches show **Unknown · safety unverified**, not a safe verdict. Read matched excerpts, reasons, and next steps; editing text clears the old result. Screenshot text is not read automatically: enter its words and select **Check record text**.
-- **Start here** provides five beginner steps for creating a case, saving its first record, checking the record list, making a backup, and preparing a report. A reminder stays available inside My cases without leaving the form. The record form uses **Save record** and explains that a case folder and its records are separate.
+- **Start here** provides five beginner steps for describing an incident, reviewing/saving a case with its story, finding the saved record, making a backup, and preparing a report. A reminder stays available inside My cases. **Save record** adds to an existing case.
 - A responsive overview with plain-language navigation and direct help paths.
 - Standalone message screening that needs no case. Every matched rule includes the matched words, an explanation, and a next step. No matches leave safety **unverified**. Checks do not open pasted links, save the message, or upload it.
 - A situation-based response checklist for payments, exposed accounts, and device access, with deliberate links to official U.S. reporting resources.
@@ -124,6 +124,10 @@ The browser suite verifies helper navigation, private in-memory questions, keybo
 ## GitHub Pages
 
 The repository includes GitHub Actions workflows for tests/build validation and Vite deployment to GitHub Pages.
+
+In **Settings → Pages → Build and deployment → Source**, choose **GitHub Actions**. The existing workflow publishes compiled `dist`; branch/Jekyll publishing can overwrite it with unbuilt source. Confirm the setting before a production merge. Feature branches do not deploy production.
+
+See the [upgrade audit, validation and real desktop/phone screenshots](docs/UPGRADE_AUDIT.md) and [guided-case release notes](docs/RELEASE_NOTES_guided-cases.md). The guided regression suite is included in the existing browser command and CI, covering review edits, retained draft files, duplicate submits, save/reload/search, filters/sorting, clarifications, exports, storage rollback/retry, newer intake records, and deleted targets.
 
 ## Safety boundary
 

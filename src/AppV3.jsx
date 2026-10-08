@@ -1,11 +1,11 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import AppV2 from './AppV2.jsx'
 import { extractEntitiesFromEvidence, getCrossCaseMatches } from './intelligence.js'
 import { buildHandoffPacket, buildIntakePreview, HANDOFF_PROFILES, handoffToMarkdown } from './intake.js'
 import { VERSION } from './version.js'
 import { exportScreenshots } from './screenshots.js'
+import { readWorkspace, writeWorkspace } from './workspace-storage.js'
 
-const STORAGE_KEY = 'scamalax.state.v1'
 const MAX_FILE_BYTES = 25 * 1024 * 1024
 const MAX_FILES = 30
 const evidenceStates = ['OBSERVED', 'SUPPORTED', 'CORRELATED', 'INFERRED', 'DISPUTED', 'UNKNOWN']
@@ -21,12 +21,10 @@ function nowIso() {
 
 function safeStore() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
-    if (parsed && Array.isArray(parsed.cases)) return parsed
+    return { store: readWorkspace(), error: '' }
   } catch {
-    // A corrupt local store should not take down intake.
+    return { store: { cases: [], activeCaseId: null }, error: 'Saved cases could not be read. Existing browser data has not been changed. Keep your backup and unsaved source material.' }
   }
-  return { cases: [], activeCaseId: null }
 }
 
 async function sha256(data) {
@@ -51,9 +49,11 @@ function safeName(value = 'case') {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'case'
 }
 
-function EvidenceIntake({ onBack }) {
-  const [store, setStore] = useState(safeStore)
-  const [caseId, setCaseId] = useState(() => safeStore().activeCaseId || safeStore().cases?.[0]?.id || '')
+function EvidenceIntake({ onBack, onCaseBusyChange, caseLeaveCheck }) {
+  const [initial] = useState(safeStore)
+  const [store, setStore] = useState(initial.store)
+  const [storageError, setStorageError] = useState(initial.error)
+  const [caseId, setCaseId] = useState(initial.store.activeCaseId || initial.store.cases?.[0]?.id || '')
   const [mode, setMode] = useState('auto')
   const [sourceLabel, setSourceLabel] = useState('')
   const [text, setText] = useState('')
@@ -63,6 +63,15 @@ function EvidenceIntake({ onBack }) {
   const [profile, setProfile] = useState('victim')
   const [exporting, setExporting] = useState(false)
   const fileInput = useRef(null)
+  const [committing, setCommitting] = useState(false)
+  const committingRef = useRef(false)
+  useEffect(() => {
+    const isDirty = () => Boolean(text.trim() || files.length || preview.records.length)
+    caseLeaveCheck.current = () => !committingRef.current && (!isDirty() || window.confirm('Discard the unsaved intake preview and selected files? Your saved records will stay unchanged.'))
+    const warnBeforeLeaving = (event) => { if (isDirty() || committingRef.current) { event.preventDefault(); event.returnValue = '' } }
+    window.addEventListener('beforeunload', warnBeforeLeaving)
+    return () => { caseLeaveCheck.current = null; window.removeEventListener('beforeunload', warnBeforeLeaving) }
+  }, [text, files, preview, caseLeaveCheck])
 
   const activeCase = useMemo(() => store.cases.find((item) => item.id === caseId) || null, [store, caseId])
 
@@ -102,7 +111,10 @@ function EvidenceIntake({ onBack }) {
   }, [activeCase, profile, activeEntities, crossCaseMatches])
 
   const refreshStore = () => {
-    const current = safeStore()
+    const loaded = safeStore()
+    setStorageError(loaded.error)
+    if (loaded.error) return
+    const current = loaded.store
     setStore(current)
     if (!current.cases.some((item) => item.id === caseId)) {
       setCaseId(current.activeCaseId || current.cases?.[0]?.id || '')
@@ -158,6 +170,7 @@ function EvidenceIntake({ onBack }) {
   }
 
   const commitBatch = async () => {
+    if (committingRef.current) return
     if (!activeCase) {
       setNotice('Choose a case before committing intake.')
       return
@@ -170,61 +183,72 @@ function EvidenceIntake({ onBack }) {
       return
     }
 
-    const recordedAt = nowIso()
-    const textEvidence = await Promise.all(selectedRecords.map(async (record) => ({
-      id: uid('ev'),
-      kind: record.kind,
-      state: record.state,
-      value: record.value.trim(),
-      note: record.note.trim(),
-      recordedAt,
-      sha256: await sha256(`${record.kind}\n${record.value.trim()}`),
-      intake: { mode: preview.mode, sourceLabel: sourceLabel.trim(), batch: true },
-    })))
-
-    const fileEvidence = []
-    for (const entry of selectedFiles) {
-      const bytes = await entry.file.arrayBuffer()
-      fileEvidence.push({
+    committingRef.current = true
+    setCommitting(true)
+    onCaseBusyChange(true)
+    setStorageError('')
+    try {
+      readWorkspace()
+      const recordedAt = nowIso()
+      const textEvidence = await Promise.all(selectedRecords.map(async (record) => ({
         id: uid('ev'),
-        kind: 'file',
-        state: entry.state,
-        value: '',
-        note: entry.note.trim(),
+        kind: record.kind,
+        state: record.state,
+        value: record.value.trim(),
+        note: record.note.trim(),
         recordedAt,
-        sha256: await sha256(bytes),
-        fileName: entry.file.name,
-        fileSize: entry.file.size,
-        fileType: entry.file.type || 'application/octet-stream',
-        intake: { mode: 'file', sourceLabel: sourceLabel.trim(), batch: true },
+        sha256: await sha256(`${record.kind}\n${record.value.trim()}`),
+        intake: { mode: preview.mode, sourceLabel: sourceLabel.trim(), batch: true },
+      })))
+
+      const fileEvidence = []
+      for (const entry of selectedFiles) {
+        const bytes = await entry.file.arrayBuffer()
+        fileEvidence.push({
+          id: uid('ev'),
+          kind: 'file',
+          state: entry.state,
+          value: '',
+          note: entry.note.trim(),
+          recordedAt,
+          sha256: await sha256(bytes),
+          fileName: entry.file.name,
+          fileSize: entry.file.size,
+          fileType: entry.file.type || 'application/octet-stream',
+          intake: { mode: 'file', sourceLabel: sourceLabel.trim(), batch: true },
+        })
+      }
+
+      const added = [...textEvidence, ...fileEvidence]
+      const nextStore = writeWorkspace((current) => {
+        if (!current.cases.some((item) => item.id === activeCase.id)) throw new Error('The target case no longer exists.')
+        return {
+          ...current,
+          activeCaseId: activeCase.id,
+          cases: current.cases.map((item) => item.id === activeCase.id ? {
+            ...item,
+            evidence: [...added, ...(item.evidence || [])],
+            timeline: [
+              {
+                id: uid('event'),
+                at: recordedAt,
+                text: `Evidence Intake committed ${added.length} record${added.length === 1 ? '' : 's'} (${textEvidence.length} text, ${fileEvidence.length} file).`,
+              },
+              ...(item.timeline || []),
+            ],
+          } : item),
+        }
       })
-    }
 
-    const added = [...textEvidence, ...fileEvidence]
-    const nextStore = {
-      ...store,
-      activeCaseId: activeCase.id,
-      cases: store.cases.map((item) => item.id === activeCase.id ? {
-        ...item,
-        evidence: [...added, ...(item.evidence || [])],
-        timeline: [
-          {
-            id: uid('event'),
-            at: recordedAt,
-            text: `Evidence Intake committed ${added.length} record${added.length === 1 ? '' : 's'} (${textEvidence.length} text, ${fileEvidence.length} file).`,
-          },
-          ...(item.timeline || []),
-        ],
-      } : item),
-    }
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextStore))
-    setStore(nextStore)
-    setPreview({ mode: 'bulk', records: [], warnings: [] })
-    setText('')
-    setFiles([])
-    if (fileInput.current) fileInput.current.value = ''
-    setNotice(`${added.length} evidence record${added.length === 1 ? '' : 's'} committed. Original file bytes were not stored.`)
+      setStore(nextStore)
+      setPreview({ mode: 'bulk', records: [], warnings: [] })
+      setText('')
+      setFiles([])
+      if (fileInput.current) fileInput.current.value = ''
+      setNotice(`${added.length} evidence record${added.length === 1 ? '' : 's'} committed. Original file bytes were not stored.`)
+    } catch {
+      setStorageError('Evidence was not saved. Your preview and selected files are still here. Existing records have not been replaced. Keep your source material and try again.')
+    } finally { committingRef.current = false; setCommitting(false); onCaseBusyChange(false) }
   }
 
   const exportHandoff = async (format) => {
@@ -244,6 +268,7 @@ function EvidenceIntake({ onBack }) {
 
   return (
     <div className="intake-shell">
+      <fieldset className="intake-save-boundary" disabled={committing}>
       <header className="intake-topbar">
         <div>
           <span className="kicker">SCAM-A-LAX {VERSION}</span>
@@ -259,6 +284,7 @@ function EvidenceIntake({ onBack }) {
       <div className="intake-boundary">
         <strong>Local-first:</strong> this intake keeps file details and hash receipts. To keep a viewable screenshot, use Scam Ledger. Pasted text and selected files stay in this browser.
       </div>
+      {storageError && <p className="record-save-error" role="alert">{storageError}</p>}
 
       <main className="intake-layout">
         <section className="panel intake-source">
@@ -366,7 +392,7 @@ function EvidenceIntake({ onBack }) {
           )}
 
           <button className="primary commit-batch" onClick={commitBatch} disabled={!activeCase || (!previewEvidence.length && !files.some((entry) => entry.selected))}>
-            Hash + commit selected evidence
+            {committing ? 'Saving selected evidence…' : 'Hash + commit selected evidence'}
           </button>
         </section>
 
@@ -403,31 +429,33 @@ function EvidenceIntake({ onBack }) {
           ) : <p className="muted empty">Choose a case to build a handoff preview.</p>}
         </section>
       </main>
+      </fieldset>
 
       {notice && <div className="toast">{notice}</div>}
     </div>
   )
 }
 
-export default function AppV3() {
+export default function AppV3({ caseDraft, onCaseDraftChange, caseSaving, onCaseBusyChange, caseLeaveCheck }) {
   const [surface, setSurface] = useState('workstation')
   const [workstationKey, setWorkstationKey] = useState(0)
 
-  const openIntake = () => setSurface('intake')
+  const openIntake = () => { if (!caseLeaveCheck.current || caseLeaveCheck.current()) setSurface('intake') }
   const returnToWorkstation = () => {
+    if (caseLeaveCheck.current && !caseLeaveCheck.current()) return
     setWorkstationKey((value) => value + 1)
     setSurface('workstation')
   }
 
-  if (surface === 'intake') return <EvidenceIntake onBack={returnToWorkstation} />
+  if (surface === 'intake') return <EvidenceIntake onBack={returnToWorkstation} onCaseBusyChange={onCaseBusyChange} caseLeaveCheck={caseLeaveCheck} />
 
   return (
     <div className="app-v3-shell">
       <div className="v3-launchbar">
         <div><strong>SCAM-A-LAX {VERSION}</strong><span>Import evidence and prepare a handoff.</span></div>
-        <button className="primary" onClick={openIntake}>Open Evidence Intake</button>
+        <button className="primary" disabled={caseSaving} onClick={openIntake}>Open Evidence Intake</button>
       </div>
-      <AppV2 key={workstationKey} />
+      <AppV2 key={workstationKey} caseDraft={caseDraft} onCaseDraftChange={onCaseDraftChange} onCaseBusyChange={onCaseBusyChange} caseLeaveCheck={caseLeaveCheck} />
     </div>
   )
 }
