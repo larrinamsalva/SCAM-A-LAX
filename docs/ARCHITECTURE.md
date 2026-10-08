@@ -2,7 +2,7 @@
 
 ## Active application
 
-`main.jsx` mounts `AppEdition.jsx`: the overview, guide, message check, help, Academy, Number Tracker and My cases. My cases lazily mounts `AppV3.jsx`, exposing `AppV2.jsx` and Evidence Intake. Original `App.jsx` is retained legacy source, not the active entry point. Beginner and advanced tools share the existing workspace.
+`main.jsx` mounts `AppEdition.jsx`: the overview, guide, message check, Easy Scam Radar, help, Academy, Number Tracker and My cases. Easy Scam Radar lazily mounts `GuidedScamRadar.jsx`; My cases lazily mounts `AppV3.jsx`, exposing `AppV2.jsx` and Evidence Intake. Original `App.jsx` is retained legacy source, not the active entry point. Beginner and advanced tools share the existing workspace.
 
 ## Storage and trust
 
@@ -31,6 +31,7 @@ OBSERVED means directly supplied/seen material, not verified claims. SUPPORTED m
 - Scam Ledger: immutable records, receipts, screenshot viewer, timelines and explicit clarification.
 - Evidence Intake: reviewable email/transcript/bulk/file proposals with analyst-selected kind/state before commit; failed writes retain source/preview/files.
 - ScamCheck/Radar: shared deterministic rules and configured warning points; no matches remain Unknown, safety unverified. Editing clears stale results. No automatic URL visits or OCR.
+- Easy Scam Radar: sixteen plain-language questions with configured, capped warning points and a live needle. Answers exist only while its page is open, do not become case evidence, and never enter browser storage or a remote service. Its phone view keeps a compact gauge visible while answering; case drafts remain in AppEdition and survive radar navigation.
 - Number Tracker: conservative matching of local phone evidence, no public scam database or caller identity/location.
 - Intelligence Graph: entity extraction, cautious cross-case correlations, labeled analyst links.
 - Helper: built-in directions with deliberate navigation, not remote AI.
