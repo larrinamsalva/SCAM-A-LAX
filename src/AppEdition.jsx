@@ -9,8 +9,9 @@ import './edition.css'
 
 const Workstation = lazy(() => import('./AppV3.jsx'))
 const NumberTracker = lazy(() => import('./NumberTracker.jsx'))
+const GuidedScamRadar = lazy(() => import('./GuidedScamRadar.jsx'))
 const PROGRESS_KEY = 'scamalax.learning.v1'
-const routes = [['home', 'Overview'], ['guide', 'Start here'], ['check', 'Check a message'], ['numbers', 'Number tracker'], ['help', 'Get help'], ['academy', 'Scam Academy'], ['cases', 'My cases']]
+const routes = [['home', 'Overview'], ['guide', 'Start here'], ['check', 'Check a message'], ['guided', 'Easy Scam Radar'], ['numbers', 'Number tracker'], ['help', 'Get help'], ['academy', 'Scam Academy'], ['cases', 'My cases']]
 
 function readRoute() {
   const route = window.location.hash.slice(1)
@@ -55,7 +56,7 @@ function Overview({ go, completed }) {
         <div className="ed-eyebrow"><span className="ed-dot" /> LARRINA’S EDITION</div>
         <h1>A little pause.<br /><em>A lot more protection.</em></h1>
         <p>A suspicious text. A pushy caller. An offer that feels off. Get a clearer view of the warning signs and decide what to do next.</p>
-        <div className="ed-button-row"><button className="ed-primary" onClick={() => go('check')}>Check a message <Icon name="arrow" size={18} /></button><button className="ed-secondary" onClick={() => go('help')}>I need help now</button></div>
+        <div className="ed-button-row"><button className="ed-primary" onClick={() => go('guided')}>Answer easy scam questions <Icon name="arrow" size={18} /></button><button className="ed-secondary" onClick={() => go('help')}>I need help now</button></div>
         <div className="ed-hero-note"><Icon name="shield" size={17} /> Message checks run on this device. No account needed.</div>
         <button className="ed-guide-link" onClick={() => go('guide')}>New here? Follow the step-by-step guide <Icon name="arrow" size={18} /></button>
       </div>
@@ -72,6 +73,7 @@ function Overview({ go, completed }) {
       <div className="ed-paths">
         {[
           { route: 'check', icon: 'check', color: 'lilac', title: 'Does this look suspicious?', body: 'Check a message and see the words that triggered each warning.', label: 'Check a message' },
+          { route: 'guided', icon: 'shield', color: 'mint', title: 'Prefer simple questions?', body: 'Answer one question at a time. Watch the Scam Radar needle move.', label: 'Try Easy Scam Radar' },
           { route: 'help', icon: 'help', color: 'peach', title: 'Something already happened.', body: 'Choose your situation and work through a practical response checklist.', label: 'Build my next steps' },
           { route: 'cases', icon: 'folder', color: 'mint', title: 'I want to keep a record.', body: 'Organize evidence, keep file-hash receipts, and prepare a report to share.', label: 'Open my cases' },
         ].map((item) => <button key={item.route} className="ed-path" onClick={() => go(item.route)}><span className={`ed-icon ed-icon-${item.color}`}><Icon name={item.icon} /></span><h3>{item.title}</h3><p>{item.body}</p><span className="ed-path-link">{item.label} <Icon name="arrow" size={18} /></span></button>)}
@@ -123,6 +125,7 @@ function MessageCheck({ go }) {
       <div className="ed-findings">{result.findings.map((finding) => <article key={finding.id}><div className="ed-finding-heading"><Icon name="shield" size={19} /><h3>{finding.label}</h3></div><div className="ed-excerpt">Matched words: <q>{finding.excerpt}</q></div><p>{finding.why}</p><p className="ed-next-step"><strong>Next step:</strong> {finding.action}</p></article>)}</div>
       <div className="ed-button-row"><button className="ed-primary" onClick={() => go('help')}>Build my next steps</button><button className="ed-secondary" onClick={() => go('cases')}>Open My cases to save a record</button></div><p className="ed-small">Opening My cases does not automatically save this message or its analysis. Copy any text you want to keep before leaving this page.</p>
     </section>}
+    <div className="ed-card"><h2>Prefer simple questions?</h2><p>Use large YES, NO, and NOT SURE buttons and watch a warning meter move as you answer.</p><button className="ed-secondary" onClick={() => go('guided')}>Open Easy Scam Radar</button></div>
     <p className="ed-reassurance">Feeling uncertain is a good reason to slow down. You don’t have to decide while someone is pressuring you.</p>
   </div>
 }
@@ -214,6 +217,7 @@ export default function AppEdition() {
       {route === 'home' && <Overview go={go} completed={Object.keys(progress.answers).length} />}
       {route === 'guide' && <StartHere go={go} />}
       {route === 'check' && <MessageCheck go={go} />}
+      {route === 'guided' && <Suspense fallback={<p className="ed-loading" role="status">Opening Easy Scam Radar…</p>}><GuidedScamRadar go={go} /></Suspense>}
       {route === 'numbers' && <Suspense fallback={<p className="ed-loading" role="status">Opening your local number tracker…</p>}><NumberTracker go={go} /></Suspense>}
       {route === 'help' && <GetHelp progress={progress} update={setProgress} go={go} />}
       {route === 'academy' && <Academy progress={progress} update={setProgress} />}
