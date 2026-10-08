@@ -14,6 +14,8 @@ This fork adds a people-first front door to Mikey’s local evidence workstation
 
 ### New in this edition
 
+- **App helper** opens from any page with topic buttons and short questions about saving stories, finding records, backups, reports, file receipts, message checks, and Academy practice. It uses built-in directions, not a remote AI service; no account or API key is needed. Chat stays in tab memory, never becomes case evidence, and clears on refresh. Opening and closing it preserves unsaved forms. Navigation happens only when the user selects a destination button.
+- **Number tracker** looks up phone numbers across saved local case records, lists numbers already mentioned, and shows the matching cases and source records with their original evidence labels. It uses the existing conservative phone matching: country-coded and unqualified local formats remain separate. Searching sends no number outside the app and does not modify evidence. No local match is not a safety verdict; public scam databases and caller location are not searched. Select **Open this case** to choose a matching case for review.
 - **Start here** provides five beginner steps for creating a case, saving its first record, checking the record list, making a backup, and preparing a report. A reminder stays available inside My cases without leaving the form. The record form uses **Save record** and explains that a case folder and its records are separate.
 - A responsive overview with plain-language navigation and direct help paths.
 - Standalone message screening that needs no case. Every matched rule includes the matched words, an explanation, and a next step. No matches leave safety **unverified**. Checks do not open pasted links, save the message, or upload it.
@@ -113,7 +115,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-The browser suite verifies message privacy, result invalidation, checklist and lesson persistence, all 20 practice scenarios, legacy case preservation, exports, preview-before-commit intake, and inferred-only case analysis. Screenshots are written to the ignored `test-results/` folder. For an already-running preview set `QA_BASE_URL`; for a managed Chromium installation set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
+The browser suite verifies helper navigation, private in-memory questions, keyboard close, unsaved draft preservation, short-viewport access, phone-number matches and country-code separation, source-case opening, unreadable workspace handling, message privacy, result invalidation, checklist and lesson persistence, all 20 practice scenarios, legacy case preservation, exports, preview-before-commit intake, and inferred-only case analysis. Screenshots are written to the ignored `test-results/` folder. For an already-running preview set `QA_BASE_URL`; for a managed Chromium installation set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
 
 ## GitHub Pages
 
